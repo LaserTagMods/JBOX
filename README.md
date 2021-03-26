@@ -9,3 +9,26 @@ Basic Concepts:
 The JBOX is a game box or accessory for the BRX line of taggers, if desired, the IR Protocol could be changed easily to configure the device to any laser tag equipment line. The device uses BLE to be configured and set by a mobile device using the ITO control platform "BLYNK". A customized Blynk application has been developed and is used for configuring and customizing the functions of the JBOX device. If all components listed above are integrated, the device can provide long range communication (device to device) for interactive game play for score keeping or objective completions. Alternatively, A simple IR Receiver can be plugged in for basic base capturability for simple games. Additionally, Short range base to base communication is built in using the ESPNOW wireless communications so that bases within range can transmit data back and forth over short wifi limitations. 
 This allows for the following communications capabilities, all simultaneously: LORA(device to device only), WIFI(device to device only), BLE(mobile to device), Infrared(device to BRX), MultiColor LED(Device to human eye).
 
+**********************************************************************************************************************************************************************************
+Main Functions: 
+**********************************************************************************************************************************************************************************
+
+Basic Domination Game Mode: 
+
+default domination mode that provides both player scoring and team scoring
+Scoring reports over BLE to paired mobile device and refreshes every time
+the score changes. To deactivate, select this option a second time to pause
+the game/score. Recommended as a standalone base use only. Each time base is
+shot, the team or player who shot takes posession and the base emitts a tag
+that notifies player that the base (control point) was captured.
+
+
+Cointinuous IR Emitter: 
+
+Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
+Then activates a default interval spaced broadcast of a tag of choice.
+The tag of choice will need to be selected otherwise motion sensor is broadcasted.
+This is good for use as a respawn station that requires no button or trigger
+mechanism to activate. The default delay is two seconds but can be modified
+by another setting option in the application. Another use is a proximity detector or mine.
+
