@@ -32,3 +32,14 @@ This is good for use as a respawn station that requires no button or trigger
 mechanism to activate. The default delay is two seconds but can be modified
 by another setting option in the application. Another use is a proximity detector or mine.
 
+
+Tag Activated IR Emitter Mode:
+
+This mode causes the base to send a selected tag type when a player shoots the base sensor. 
+Use for this is if you wanted a headset activated respawn station, med kit activated base, etc. 
+this is usefull for players to have an iR based interactive base that in order to activate
+You need to be alive. It can also be used to set a base as an armed station that can serve as
+A drone to tag other players. It also has a cool down function, this way it can be set to only 
+Provide a perk every so often and the cool down period can be adjusted via the app. It will also
+Have an activation limit option as well so if you wanted to limit respawns or med kits from the 
+Base this can easily be pre configured.
