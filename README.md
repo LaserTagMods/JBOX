@@ -66,3 +66,16 @@ A drone to tag other players. It also has a cool down function, this way it can 
 Provide a perk every so often and the cool down period can be adjusted via the app. It will also
 Have an activation limit option as well so if you wanted to limit respawns or med kits from the 
 Base this can easily be pre configured.
+
+Dual Mode - Continuous IR Emmitter and Tag activated base capture to change team alignment (freindly):
+
+This mode allows you to have a base continuously emit a specific team freindly ir tag/protocol of
+Choice, while allowing for other teams to capture the base after a pre-set or customizable number 
+Of tags landed on the base. What will this allow you to do? A sentry unit that radiates damage  to 
+Opposing teams, based upon the last team that captured the base. A healing station that can be changed
+Mid game for who owns it. A respawn station that can be captured/over taken. This last one is the
+Purpose in designing this mode. The main game play function is that a number of bases can be scattered
+In the play area. At the start of the game teams race to establish bases to their color/alignment and
+While some defend, others try to capture others. As the game progresses, teams with unlimited respawns 
+Will thin out as they no longer have a base to respawn at, creating quite an ever changing field strategy
+For all.
