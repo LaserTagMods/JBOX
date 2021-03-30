@@ -16,6 +16,14 @@
  *            - Finished 1/28 at 7:30 AM - results, worked without any issue
  * 1/29/21    - Integrate LoRa Module INO base code, integration successfull
  * 2/1/21     - Added in ESPNOW comms for communicating to taggers over wifi
+ * 3/28/21    - Integrated most code portions together
+ *            - added some blynk command items over BLE
+ *            - Built out the Blynk App a little bit for some primary functions
+ *            - Need to add a lot of IR LED Protocol Commands but put place holder bools in place for enabling them later
+ *            - Tested out basic domination station mode and it worked well, adjusted score reporting as well and put on separate tab
+ *            - Still need to engage a bit more some items like buzzer and rgb functionality when captured under basic domination base mode
+ * 3/29/21    - Added Dual mode for continuous IR and capturability of base
+ *            - Added/Fixed Additional IR Protocol Outputs
  * 
  * 
 */
@@ -61,8 +69,8 @@ char auth[] = "xiocSUz0buA2fnC4Tp4uReneMb2yg5vt";
 bool RUNBLYNK = true;
 bool SETUPBLYNK = true;
 
-// Attach virtual serial terminal to Virtual Pin V1
-WidgetTerminal terminal(V1);
+// Attach virtual serial terminal to Virtual Pin V100
+WidgetTerminal terminal(V100);
 
 //*************************************************************************
 //********************** ESPNOW VARIABLE DELCARATIONS *********************
@@ -140,7 +148,7 @@ const long lorainterval = 3000;
 //**************** IR RECEIVER VARIABLE DELCARATIONS **********************
 //*************************************************************************
 // Define Variables used for the game functions
-int TeamID=0; // this is for team recognition, team 1 = red, team 2 = blue, team 3 = green
+int TeamID=0; // this is for team recognition, team 0 = red, team 1 = blue, team 2 = yellow, team 3 = green
 int gamestatus=0; // used to turn the ir reciever procedure on and off
 int PlayerID=0; // used to identify player
 int PID[6]; // used for recording player bits for ID decifering
@@ -162,9 +170,26 @@ int XX[1]; // bit to used to confirm brx ir is received
 bool ENABLEIRRECEIVER = true; // enables and disables the ir receiver
 
 //*************************************************************************
+//**************** GAME VARIABLE DELCARATIONS ***************************
+//*************************************************************************
+// variables for gameplay and scoring:
+int Function = 1; // set as default for basic domination game mode
+int TeamScore[4]; // used to track team score
+int PlayerScore[64]; // used to track individual player score
+int CapturableEmitterScore[4]; // used for accumulating points for capturability to alter team alignment
+int RequiredCapturableEmitterCounter = 10;
+
+long PreviousDominationClock = 0;
+
+bool BASICDOMINATION = true; // a default game mode
+bool DOMINATIONCLOCK = false;
+bool POSTDOMINATIONSCORETOBLYNK = false;
+bool CAPTURABLEEMITTER = false;
+
+//*************************************************************************
 //**************** IR LED VARIABLE DELCARATIONS ***************************
 //*************************************************************************
-int IRledPin =  26;    // LED connected to digital pin 13
+int IRledPin =  26;    // LED connected to GPIO26
 int B[4];
 int P[6];
 int T[2];
@@ -175,20 +200,39 @@ int Z[2];
 
 int BulletType = 0;
 int Player = 0;
-int Team = 0;
+int Team = 3;
 int Damage = 0;
 int Critical = 0;
 int Power = 0;
 
 unsigned long irledpreviousMillis = 0;
-const long irledinterval = 5000;
+long irledinterval = 2000;
+
+// Function Execution
 bool BASECONTINUOUSIRPULSE = false; // enables/disables continuous pulsing of ir
-bool TAGACTIVATEDIR = true; // enables/disables tag activated onetime IR
-bool CONTROLPOINTCAPTURED = false;
+bool SINGLEIRPULSE = false; // enabled/disables single shot of enabled ir signal
+bool TAGACTIVATEDIR = true; // enables/disables tag activated onetime IR, set as default for basic domination game
+bool TAGACTIVATEDIRCOOLDOWN = false; // used to manage frequency of accessible base ir protocol features
+long CoolDownStart = 0; // used for a delay timer
+long CoolDownInterval = 0;
+
+// IR Protocols
+bool CONTROLPOINTCAPTURED = true; // set as default for running basic domination game
 bool MOTIONSENSOR = false;
-bool SWAPBRX = true;
+bool SWAPBRX = false;
 bool OWNTHEZONE = false;
 bool HITTAG = false;
+bool CAPTURETHEFLAG = false;
+bool GASGRENADE = false;
+bool LIGHTDAMAGE = false;
+bool MEDIUMDAMAGE = false;
+bool HEAVYDAMAGE = false;
+bool FRAG = false;
+bool RESPAWNSTATION = false;
+bool MEDKIT = false;
+bool LOOTBOX = false;
+bool ARMORBOOST = false;
+bool SHEILDS = false;
 
 
 //*************************************************************************
@@ -214,14 +258,14 @@ bool RGBYELLOW = false;
 bool RGBBLUE = false;
 bool RGBPURPLE = false;
 bool RGBCYAN = false;
-bool RGBWHITE = false;
+bool RGBWHITE = true;
 
 unsigned long rgbpreviousMillis = 0;
 const long rgbinterval = 1000;
 
 unsigned long changergbpreviousMillis = 0;
 const long changergbinterval = 2000;
-bool RGBDEMOMODE = false; // enables rgb demo flashing and changing of colors
+bool RGBDEMOMODE = true; // enables rgb demo flashing and changing of colors
 
 //*************************************************************************
 //**************** PIEZO VARIABLE DELCARATIONS ****************************
@@ -361,7 +405,7 @@ void ChangeMACaddress() {
 //*************************************************************************
 void initializeblynk() {
   Serial.println("Waiting for connections...");
-  Blynk.setDeviceName("BASE2");
+  Blynk.setDeviceName("BASE1");
   Blynk.begin(auth);
   
   // Clear the terminal content
@@ -369,36 +413,345 @@ void initializeblynk() {
 
   // This will print Blynk Software version to the Terminal Widget when
   // your hardware gets connected to Blynk Server
-  terminal.println(F("Blynk v" BLYNK_VERSION ": Device started"));
-  terminal.println(F("-------------"));
-  terminal.println(F("Type 'Marco' and get a reply, or type"));
-  terminal.println(F("anything else and get it printed back."));
+  terminal.println("Blynk v" BLYNK_VERSION ": Device started");
+  terminal.println("-------------");
+  terminal.println("Type 'Marco' and get a reply, or type");
+  terminal.println("anything else and get it printed back.");
   terminal.flush();
-}
-BLYNK_WRITE(V0) {// Test Blynk
-int b=param.asInt();
-  if (b==1) {
-    Serial.println("Blynk Is Working, Value Received!!!");
-  }
 }
 // You can send commands from Terminal to your hardware. Just use
 // the same Virtual Pin as your Terminal Widget
-BLYNK_WRITE(V1)
-{
-
+BLYNK_WRITE(V100) { // test terminal
   // if you type "Marco" into Terminal Widget - it will respond: "Polo:"
   if (String("Marco") == param.asStr()) {
     terminal.println("You said: 'Marco'") ;
     terminal.println("I said: 'Polo'") ;
   } else {
-
     // Send it back
     terminal.print("You said:");
     terminal.write(param.getBuffer(), param.getLength());
     terminal.println();
   }
-
   // Ensure everything is sent
+  terminal.flush();
+}
+BLYNK_WRITE(V0) {// Options Menu
+int b=param.asInt();
+  if (b==1) { // Basic Domination Mode
+    // default domination mode that provides both player scoring and team scoring
+    // Scoring reports over BLE to paired mobile device and refreshes every time
+    // the score changes. To deactivate, select this option a second time to pause
+    // the game/score. Recommended as a standalone base use only. Each time base is
+    // shot, the team or player who shot takes posession and the base emitts a tag
+    // that notifies player that the base (control point) was captured.
+    Serial.println("Basic Domination Mode - Default!!!");
+    terminal.println("Basic Domination Mode - Default!!!");
+    Function = 1;
+    CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
+    DOMINATIONCLOCK = false; // stops the game from going if already running
+    BASICDOMINATION = true; // enables this game mode
+    ResetAllIRProtocols(); // resets all ir protocols
+    CONTROLPOINTCAPTURED = true; // enables control point captured call out
+    TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
+    BASECONTINUOUSIRPULSE = false;
+    ENABLEIRRECEIVER = true;
+  }
+  if (b==2) { // Continuous IR Emitter Mode
+    // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
+    // Then activates a default interval spaced broadcast of a tag of choice.
+    // The tag of choice will need to be selected otherwise motion sensor is broadcasted.
+    // This is good for use as a respawn station that requires no button or trigger
+    // mechanism to activate. The default delay is two seconds but can be modified
+    // by another setting option in the application. Another use is a proximity detector or mine.
+    Serial.println("Continuous IR Emitter!!!");
+    terminal.println("Continuous IR Emitter!!!");
+    Function = 2;
+    CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
+    BASECONTINUOUSIRPULSE = true;
+    DOMINATIONCLOCK = false; // stops the game from going if already running
+    BASICDOMINATION = false; // enables this game mode
+    ResetAllIRProtocols(); // Resets all ir protocols
+    TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
+    ENABLEIRRECEIVER = false; // deactivates the ir receiver to avoid unnecessary processes
+    MOTIONSENSOR = true;
+  }
+  if (b==3) { // Tag Activated Ir Emitter
+    // Clears out any existing IR and Base Game Settings
+    // Sets Default for tag activation to send an IR emitter protocol for "motion sensor" as default
+    // 
+    Serial.println("Tage Activated IR Emitter!!!");
+    terminal.println("Tage Activated IR Emitter!!!");
+    Function = 3;
+    CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
+    BASECONTINUOUSIRPULSE = false;
+    DOMINATIONCLOCK = false; // stops the game from going if already running
+    BASICDOMINATION = false; // enables this game mode
+    CONTROLPOINTCAPTURED = false; // enables control point captured call out
+    TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
+    ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
+    ResetAllIRProtocols(); // resets all ir protocols
+    MOTIONSENSOR = true; // enables the alarm sound tag protocol    
+  }
+  if (b==4) { // Dual Mode - Continuous Emitter - Tag Capturable For Team Alignment
+    // Clears out existing settings
+    // Sets default Continuous Emitter Tag to Respwan Station As Default
+    // Creates A Counter for Capturability by Shots (default is 10, change default to desired count) 
+    // Enable IR Activated Capturability to switch team friendly setting to last captured    
+    // bases start out as default red team
+    // recommend doing a delay for respawn time to limit players ability to respawn right away on a base they may be guarding
+    Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
+    terminal.println("Dual Mode - Capturable Continuous IR Emitter!!!");
+    Function = 4;
+    BASECONTINUOUSIRPULSE = true;
+    DOMINATIONCLOCK = false; // stops the game from going if already running
+    BASICDOMINATION = false; // enables this game mode
+    CONTROLPOINTCAPTURED = false; // enables control point captured call out
+    TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
+    ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
+    ResetAllIRProtocols(); // reset all ir protocols
+    RESPAWNSTATION = true; // enables the alarm sound tag protocol
+    CAPTURABLEEMITTER = true; // enables the team freindly to be toggled via IR
+    Team = 0; // sets all bases to default to red team
+  }
+  
+  terminal.flush();
+}
+BLYNK_WRITE(V1) { // set IR Protocol to be used
+  int b=param.asInt();
+  ResetAllIRProtocols();
+  if (b==1) {
+    MOTIONSENSOR = true;
+    Serial.println("Motion Sensor Enabled!!!");
+    terminal.println("Motion Sensor Enabled!!!");
+  }
+  if (b==2) {
+    CAPTURETHEFLAG = true;
+    Serial.println("Capture the Flag Enabled!!!");
+    terminal.println("Capture the Flag Enabled!!!");
+  }
+  if (b==3) {
+    CONTROLPOINTCAPTURED = true;
+    Serial.println("Control Point Captured Enabled!!!");
+    terminal.println("Control Point Captured Enabled!!!");
+  }
+  if (b==4) {
+    GASGRENADE = true;
+    Serial.println("Gas Grenade Enabled!!!");
+    terminal.println("Gas Grenade Enabled!!!");
+  }
+  if (b==5) {
+    LIGHTDAMAGE = true;
+    Serial.println("Light Damage Enabled!!!");
+    terminal.println("Light Damage Enabled!!!");
+  }
+  if (b==6) {
+    MEDIUMDAMAGE = true;
+    Serial.println("Medium Damage Enabled!!!");
+    terminal.println("Medium Damage Enabled!!!");
+  }
+  if (b==7) {
+    HEAVYDAMAGE = true;
+    Serial.println("Heavy Damage Enabled!!!");
+    terminal.println("Heavy Damage Enabled!!!");
+  }
+  if (b==8) {
+    FRAG = true;
+    Serial.println("Explosive Damage Enabled!!!");
+    terminal.println("Explosive Damage Enabled!!!");
+  }
+  if (b==9) {
+    RESPAWNSTATION = true;
+    Serial.println("Respawn Station Enabled!!!");
+    terminal.println("Respawn Station Enabled!!!");
+  }
+  if (b==10) {
+    MEDKIT = true;
+    Serial.println("Medkit Enabled!!!");
+    terminal.println("Medkit Enabled!!!");
+  }
+  if (b==11) {
+    LOOTBOX = true;
+    Serial.println("Loot Box Enabled!!!");
+    terminal.println("Loot Box Enabled!!!");
+  }
+  if (b==12) {
+    ARMORBOOST = true;
+    Serial.println("Armor Boost Enabled!!!");
+    terminal.println("Armor Boost Enabled!!!");
+  }
+  if (b==13) {
+    SHEILDS = true;
+    Serial.println("Sheilds Enabled!!!");
+    terminal.println("Sheilds Enabled!!!");
+  }
+  if (b==14) {
+    OWNTHEZONE = true;
+    Serial.println("Own The Zone Enabled!!!");
+    terminal.println("Own The Zone Enabled!!!");
+  }
+  terminal.flush();
+}
+BLYNK_WRITE(V2) { // Set Freindly Team
+int b=param.asInt();
+  if (b==1) {
+    Team = 2;
+    Serial.println("Team Set to Yellow!!!");
+    terminal.println("Team Set to Yellow!!!");
+  }
+  if (b==2) {
+    Team = 0;
+    Serial.println("Team Set to Red!!!");
+    terminal.println("Team Set to Red!!!");
+  }
+  if (b==3) {
+    Team = 1;
+    Serial.println("Team Set to Blue!!!");
+    terminal.println("Team Set to Blue!!!");
+  }
+  if (b==4) {
+    Team = 2;
+    Serial.println("Team Set to Yellow!!!");
+    terminal.println("Team Set to Yellow!!!");
+  }
+  if (b==5) {
+    Team = 3;
+    Serial.println("Team Set to Green!!!");
+    terminal.println("Team Set to Green!!!");
+  }
+  terminal.flush();
+}
+BLYNK_WRITE(V3) { // Adjust Continuous IR Tag frequency
+int b=param.asInt();
+  if (b==1) {
+    irledinterval = 1000;
+  }
+  if (b==2) {
+    irledinterval = 2000;
+  }
+  if (b==3) {
+    irledinterval = 3000;
+  }
+  if (b==4) {
+    irledinterval = 5000;
+  }
+  if (b==5) {
+    irledinterval = 10000;
+  }
+  if (b==6) {
+    irledinterval = 15000;
+  }
+  if (b==7) {
+    irledinterval = 30000;
+  }
+  if (b==8) {
+    irledinterval = 60000;
+  }
+  Serial.print("Tag Frequency Set to: ");
+  Serial.println(irledinterval);
+  terminal.print("Tag Frequency Set to: ");
+  terminal.println(irledinterval);
+  terminal.flush();
+}
+BLYNK_WRITE(V4) { // Adjust/Applies a cool down to Tag Activated IR Emitter Mode
+int b=param.asInt();
+  if (b==1) {
+    TAGACTIVATEDIRCOOLDOWN = false;
+    Serial.println("Cool Down Deactivated");  
+    terminal.println("Cool Down Deactivated");
+  } else {
+    if (b==2) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 5000; 
+    }
+    if (b==3) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 10000;
+    }
+    if (b==4) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 15000;
+    }
+    if (b==5) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 30000;
+    }
+    if (b==6) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 60000;
+    }
+    if (b==7) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 120000;
+    }
+    if (b==8) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 180000;
+    }
+    if (b==9) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 300000;
+    }
+    if (b==10) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 600000;
+    }
+    if (b==11) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 900000;
+    }
+    if (b==12) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 1200000;
+    }
+    if (b==13) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 1800000;
+    }  
+    Serial.println("Cool Down Activated"); 
+    Serial.print("Cool Down Timer Set to: ");
+    Serial.println(CoolDownInterval);
+    terminal.println("Cool Down Activated"); 
+    terminal.print("Cool Down Timer Set to: ");
+    terminal.println(CoolDownInterval);
+  }
+  terminal.flush();
+}
+BLYNK_WRITE(V5) { // Adjust Capturable IR Base Tag Counter
+  int b=param.asInt();
+  if (b==1) {
+    RequiredCapturableEmitterCounter = 1;
+  }
+  if (b==2) {
+    RequiredCapturableEmitterCounter = 10; // Default
+  }
+  if (b==3) {
+    RequiredCapturableEmitterCounter = 15;
+  }
+  if (b==4) {
+    RequiredCapturableEmitterCounter = 30;
+  }
+  if (b==5) {
+    RequiredCapturableEmitterCounter = 60;
+  }
+  if (b==6) {
+    RequiredCapturableEmitterCounter = 100;
+  }
+  if (b==7) {
+    RequiredCapturableEmitterCounter = 150;
+  }
+  if (b==8) {
+    RequiredCapturableEmitterCounter = 300;
+  }
+  if (b==9) {
+    RequiredCapturableEmitterCounter = 500;
+  }
+  if (b==10) {
+    RequiredCapturableEmitterCounter = 1000;
+  }
+  Serial.print("Required Capturable Emitter Counter Set to: ");
+  Serial.println(RequiredCapturableEmitterCounter);
+  terminal.print("Required Capturable Emitter Counter Set to: ");
+  terminal.println(RequiredCapturableEmitterCounter);
   terminal.flush();
 }
 
@@ -705,18 +1058,25 @@ void receiveBRXir() {
         IDDamage();
         IDPower();
         IDCritical();
+        if (CAPTURABLEEMITTER) {
+          ChangeBaseAlignment();
+        }
+        if (BASICDOMINATION) {
+          BasicDomination();
+          if (!DOMINATIONCLOCK) {
+            DOMINATIONCLOCK = true;
+          }
+        }
         if (TAGACTIVATEDIR) {
-          if (CONTROLPOINTCAPTURED) {
-            ControlPointCaptured();
+          if (TAGACTIVATEDIRCOOLDOWN) {
+            TAGACTIVATEDIR = false;
+            CoolDownStart = millis();
           }
-          if (MOTIONSENSOR) {
-            MotionSensor();
-          }
-          if (OWNTHEZONE) {
-            OwnTheZone();
-          }
-          if (SWAPBRX) {
-            SwapBRX();
+          VerifyCurrentIRTagSelection();
+        }
+        if (TAGACTIVATEDIRCOOLDOWN) {
+          if (!TAGACTIVATEDIR) {
+            // this means that the base is on cool down, should send alarm or damage or something
           }
         }
       } else {
@@ -738,9 +1098,9 @@ void pulseIR(long microsecs) {
   while (microsecs > 0) {
     // 38 kHz is about 13 microseconds high and 13 microseconds low
     digitalWrite(IRledPin, HIGH);  // this takes about 3 microseconds to happen
-    delayMicroseconds(10);         // hang out for 10 microseconds, you can also change this to 9 if its not working
+    delayMicroseconds(11);         // hang out for 10 microseconds, you can also change this to 9 if its not working
     digitalWrite(IRledPin, LOW);   // this also takes about 3 microseconds
-    delayMicroseconds(10);         // hang out for 10 microseconds, you can also change this to 9 if its not working
+    delayMicroseconds(11);         // hang out for 10 microseconds, you can also change this to 9 if its not working
     // so 26 microseconds altogether
     microsecs -= 26;
   }
@@ -800,13 +1160,106 @@ void SendIR() {
   delayMicroseconds(500); // delay
   pulseIR(Z[1]); // Z1
 }
+void Sheilds() { // not set properly yet
+  BulletType = 15;
+  Player = 63;
+  if (Player == PlayerID) {
+    Player = random(63);
+  }
+  Damage = 55;
+  Critical = 0;
+  Power = 0;
+  SetIRProtocol();
+}
+void ArmorBoost() { // not set properly yet
+  BulletType = 15;
+  Player = 63;
+  if (Player == PlayerID) {
+    Player = random(63);
+  }
+  Damage = 55;
+  Critical = 0;
+  Power = 0;
+  SetIRProtocol();
+}
+void MedKit() { 
+  BulletType = 1;
+  Player = 63;
+  if (Player == PlayerID) {
+    Player = random(63);
+  }
+  Damage = 40;
+  Critical = 0;
+  Power = 0;
+  SetIRProtocol();
+}
+void RespawnStation() { // not set properly yet
+  BulletType = 15;
+  Player = 63;
+  Damage = 6;
+  Critical = 1;
+  Power = 0;
+  SetIRProtocol();
+}
+
+void HeavyDamage() { // not set properly yet
+  BulletType = 0;
+  Player = 63;
+  if (Player == PlayerID) {
+    Player = random(63);
+  }
+  Damage = 100;
+  Critical = 0;
+  Power = 0;
+  SetIRProtocol();
+}
+void MediumDamage() { // not set properly yet
+  BulletType = 0;
+  Player = 63;
+  if (Player == PlayerID) {
+    Player = random(63);
+  }
+  Damage = 50;
+  Critical = 0;
+  Power = 0;
+  SetIRProtocol();
+}
+void LightDamage() { // not set properly yet
+  BulletType = 0;
+  Player = 63;
+  if (Player == PlayerID) {
+    Player = random(63);
+  }
+  Damage = 10;
+  Critical = 0;
+  Power = 0;
+  SetIRProtocol();
+}
+void GasGrenade() { // not set properly yet
+  BulletType = 11;
+  Player = 63;
+  if (Player == PlayerID) {
+    Player = random(63);
+  }
+  Damage = 1;
+  Critical = 0;
+  Power = 0;
+  SetIRProtocol();
+}
+void CaptureTheFlag() { // not set properly yet
+  BulletType = 15;
+  Player = 63;
+  Damage = 57;
+  Critical = 0;
+  Power = 0;
+  SetIRProtocol();
+}
 void SwapBRX() {
   BulletType = 1;
   Player = 63;
-  while (Player == PlayerID) {
-    Player = random(0,63);
+  if (Player == PlayerID) {
+    Player = random(63);
   }
-  Team = 0;
   Damage = 1;
   Critical = 0;
   Power = 1;
@@ -815,10 +1268,9 @@ void SwapBRX() {
 void MotionSensor() {
   BulletType = 15;
   Player = 63;
-  while (Player == PlayerID) {
-    Player = random(0,63);
+  if (Player == PlayerID) {
+    Player = random(63);
   }
-  Team = 2;
   Damage = 10;
   Critical = 0;
   Power = 0;
@@ -827,36 +1279,35 @@ void MotionSensor() {
 void ControlPointCaptured() {
   BulletType = 15;
   Player = 63;
-  while (Player == PlayerID) {
-    Player = random(0,63);
-  }
-  Team = TeamID;
-  Damage = 57;
+  Damage = 50;
   Critical = 0;
   Power = 0;
   SetIRProtocol();
 }
 void KingOfHill() {
   BulletType = 15;
-  Player = 0;
-  Team = 3;
+  Player = 63;
   Damage = 55;
-  Critical = 0;
+  Critical = 1;
   Power = 0;
+  SetIRProtocol();
 }
-void Explosion() {
+void Frag() {
   BulletType = 10;
   Player = 63;
-  Team = 2;
+  if (Player == PlayerID) {
+    Player = random(63);
+  }
   Damage = 200;
   Critical = 0;
   Power = 0;
+  SetIRProtocol();
 }
 void OwnTheZone() {
   BulletType = 3;
   Player = 63;
-  while (Player == PlayerID) {
-    Player = random(0,63);
+  if (Player == PlayerID) {
+    Player = random(63);
   }
   Team = TeamID;
   Damage = 10;
@@ -867,14 +1318,57 @@ void OwnTheZone() {
 void HitTag() {
   BulletType = 0;
   Player = 63;
-  while (Player == PlayerID) {
-    Player = random(0,63);
+  if (Player == PlayerID) {
+    Player = random(63);
   }
-  Team = 2;
   Damage = 100;
   Critical = 0;
   Power = 0;
   SetIRProtocol();
+}
+void VerifyCurrentIRTagSelection() {
+  if (CAPTURETHEFLAG) {
+    CaptureTheFlag(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (GASGRENADE) {
+    GasGrenade(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (LIGHTDAMAGE) {
+    LightDamage(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (MEDIUMDAMAGE) {
+    MediumDamage(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (HEAVYDAMAGE) {
+    HeavyDamage(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (FRAG) {
+    Frag(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (RESPAWNSTATION) {
+    RespawnStation(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (MEDKIT) {
+    MedKit(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (LOOTBOX) {
+    SwapBRX(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (ARMORBOOST) {
+    ArmorBoost(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (SHEILDS) {
+    Sheilds(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (CONTROLPOINTCAPTURED) {
+    ControlPointCaptured();
+  }
+  if (OWNTHEZONE) {
+    OwnTheZone();
+  }
+  if (HITTAG) {
+    HitTag();
+  }
 }
 void SetIRProtocol() {
 // Set Player ID
@@ -1371,6 +1865,25 @@ void paritycheck() {
   Serial.println(Z[0]);
   Serial.println(Z[1]);
 }
+void ResetAllIRProtocols() {
+  MOTIONSENSOR = false;
+  CONTROLPOINTCAPTURED = false;
+  SWAPBRX = false;
+  OWNTHEZONE = false;
+  HITTAG = false;
+  CAPTURETHEFLAG = false;
+  GASGRENADE = false;
+  LIGHTDAMAGE = false;
+  MEDIUMDAMAGE = false;
+  HEAVYDAMAGE = false;
+  FRAG = false;
+  RESPAWNSTATION = false;
+  MEDKIT = false;
+  LOOTBOX = false;
+  ARMORBOOST = false;
+  SHEILDS = false;
+}
+
 
 //*************************************************************************
 //*************************** RGB OBJECTS *********************************
@@ -1385,7 +1898,23 @@ void resetRGB() {
   RGBPURPLE = false;
   RGBCYAN = false;
   RGBWHITE = false;
-}void changergbcolor() {
+}
+void AlignRGBWithTeam() {
+  resetRGB();
+  if (TeamID == 0) {
+    RGBRED = true;
+  }
+  if (TeamID == 1) {
+    RGBBLUE = true;
+  }
+  if (TeamID == 2) {
+    RGBYELLOW = true;
+  }
+  if (TeamID == 3) {
+    RGBGREEN = true;
+  }
+}
+void changergbcolor() {
   int statuschange = 99;
   if(RGBGREEN) {RGBGREEN = false; RGBWHITE = true; statuschange = 0;}
   if(RGBRED) {RGBRED = false; RGBGREEN = true;}
@@ -1534,6 +2063,103 @@ void buzz() {
   }
 }
 
+//*************************************************************************
+//**************************** GAME PLAY OBJECTS **************************
+//*************************************************************************
+void ChangeBaseAlignment() {
+  if (TeamID != Team) { // checks to see if tag hitting base is unfriendly or friendly
+    CapturableEmitterScore[TeamID]++; // add one point to the team that shot the base
+    if (CapturableEmitterScore[TeamID] >= RequiredCapturableEmitterCounter) { // check if the team scored enough points/shots to capture base
+      Team = TeamID; // sets the ir protocol used for the respawn ir tag
+      // resetting all team capture points
+      CapturableEmitterScore[0] = 0;
+      CapturableEmitterScore[1] = 0;
+      CapturableEmitterScore[2] = 0;
+      CapturableEmitterScore[3] = 0;
+      AlignRGBWithTeam(); // sets team RGB to new friendly team
+    } else { // if team tagging base did not meet minimum to control base
+      int tempscore = CapturableEmitterScore[TeamID]; // temporarily stores the teams score that just shot the base
+      // resets all scores
+      CapturableEmitterScore[0] = 0;
+      CapturableEmitterScore[1] = 0;
+      CapturableEmitterScore[2] = 0;
+      CapturableEmitterScore[3] = 0;
+      CapturableEmitterScore[TeamID] = tempscore; // resaves the temporarily stored score over the team's score that just shot the base, just easier than a bunch of if statements
+    }
+  }
+}
+void BasicDomination() {
+  RGBDEMOMODE = false;
+  AlignRGBWithTeam();
+}
+void AddPointToTeamWithPossession() {
+  TeamScore[TeamID]++;
+}
+void AddPointToPlayerWithPossession() {
+  PlayerScore[PlayerID]++;
+}
+void PostDominationScore() {
+  // Clear the terminal content
+  terminal.clear();
+  // This will print score updates to Terminal Widget when
+  // your hardware gets connected to Blynk Server
+  terminal.println("*******************************");
+  Serial.println("*******************************");
+  terminal.println("Domination Score Updated!");
+  Serial.println("Domination Score Updated!");
+  terminal.println("*******************************");
+  Serial.println("*******************************");
+  int teamcounter = 0;
+  while (teamcounter < 4) {
+    //Serial.println(teamcounter);
+    if (TeamScore[teamcounter] > 0) {
+      if (teamcounter == 0) {
+        terminal.print("Red Team Score: ");
+        Serial.print("Red Team Score: ");
+        terminal.println(TeamScore[teamcounter]);
+        Serial.println(TeamScore[teamcounter]);
+      }
+      if (teamcounter == 1) {
+        terminal.print("Blue Team Score: ");
+        Serial.print("Blue Team Score: ");
+        terminal.println(TeamScore[teamcounter]);
+        Serial.println(TeamScore[teamcounter]);
+      }
+      if (teamcounter == 2) {
+        terminal.print("Yellow Team Score: ");
+        Serial.print("Yellow Team Score: ");
+        terminal.println(TeamScore[teamcounter]);
+        Serial.println(TeamScore[teamcounter]);
+      }
+      if (teamcounter == 3) {
+        terminal.print("Green Team Score: ");
+        Serial.print("Green Team Score: ");
+        terminal.println(TeamScore[teamcounter]);
+        Serial.println(TeamScore[teamcounter]);
+      }
+    }
+    teamcounter++;
+    vTaskDelay(0);
+  }
+  terminal.println("");
+  int playercounter = 0;
+  while (playercounter < 64) {
+    //Serial.println(playercounter);
+    if (PlayerScore[playercounter] > 0) {
+      terminal.print("Player ");
+      Serial.print("Player ");
+      terminal.print(playercounter);
+      Serial.print(playercounter);
+      terminal.print(" Score: ");
+      Serial.print(" Score: ");
+      terminal.println(PlayerScore[playercounter]);
+      Serial.println(PlayerScore[playercounter]);
+    }
+    playercounter++;
+    vTaskDelay(0);
+  }
+  terminal.flush();
+}
 
 //******************************************************************************************
 // **********************************  CORE 0 LOOP  ****************************************
@@ -1557,24 +2183,28 @@ void loop1(void *pvParameters) {
     if (BASECONTINUOUSIRPULSE) {
       if (currentMillis0 - irledpreviousMillis >= irledinterval) {
         irledpreviousMillis = currentMillis0;
-        if (MOTIONSENSOR) {
-          MotionSensor(); // sets ir protocol to motion sensor yellow and sends it
-        }
-        if (CONTROLPOINTCAPTURED) {
-          ControlPointCaptured();
-        }
-        if (OWNTHEZONE) {
-          OwnTheZone();
-        }
-        if (HITTAG) {
-          HitTag();
-        }
+        VerifyCurrentIRTagSelection(); // runs object for identifying set ir protocol and send it
       }
+    }
+    if (SINGLEIRPULSE) {
+      SINGLEIRPULSE = false;
+      // Still needing objects: CAPTURETHEFLAG, GASGRENADE, LIGHTDAMAGE, MEDIUMDAMAGE, HEAVYDAMAGE, FRAG, RESPAWNSTATION, MEDKIT, LOOTBOX, ARMORBOOST, SHEILDS
+      VerifyCurrentIRTagSelection();  // runs object for identifying set ir protocol and send it
     }
     //**************************************************************************************
     // IR Receiver main functions:
-    if (ENABLEIRRECEIVER || TAGACTIVATEDIR) { 
+    if (ENABLEIRRECEIVER || TAGACTIVATEDIR) { // default has ir receiver enabled for auto game start
       receiveBRXir(); // runs the ir receiver, looking for brx ir protocols
+      if (TAGACTIVATEDIRCOOLDOWN) {
+        if (!TAGACTIVATEDIR) {
+          // Base is in cool down
+          if (currentMillis0 - CoolDownStart > CoolDownInterval) {
+            // Cool down is over
+            TAGACTIVATEDIR = true;
+            Serial.println("Cool Down Is Over");
+          }
+        }
+      }
     }
     //**************************************************************************************
     // LoRa Receiver Main Functions:
@@ -1590,6 +2220,24 @@ void loop1(void *pvParameters) {
     if (BUZZ) {
       buzz();
     }
+    //**********************************************************************
+    // Game Play functions:
+    if (BASICDOMINATION) {
+      //Serial.println("basic domination toggle confirmed active");
+      if (DOMINATIONCLOCK) {
+        //Serial.println("dominationclock toggle confirmed active");
+        if (currentMillis0 - 1000 > PreviousDominationClock) {
+          Serial.println("1 second lapsed under counter object");
+          PreviousDominationClock = currentMillis0;
+          Serial.println("Run points accumulator for teams");
+          AddPointToTeamWithPossession();
+          Serial.println("Run points accumulator for Players");
+          AddPointToPlayerWithPossession();
+          Serial.println("Enable Score Posting");
+          POSTDOMINATIONSCORETOBLYNK = true;
+        } 
+      }
+    }
     delay(1); // this has to be here or it will just continue to restart the esp32
   }
 }
@@ -1604,18 +2252,22 @@ void loop2(void *pvParameters) {
     unsigned long currentMillis1 = millis(); // sets the timer for timed operations
     // place main blynk functions in here, everything wifi related:
     if (RUNESPNOW) {
+      if (currentMillis1 - 5000 > PreviousMillis) {
+        PreviousMillis = currentMillis1;
+        //ESPNOWDATASEND = true;
+      }
       if (ESPNOWDATASEND) {
         ESPNOWDATASEND = false;
         getReadings();
         BroadcastData();
       }
-      if (currentMillis1 - interval > PreviousMillis) {
-        PreviousMillis = currentMillis1;
-        ESPNOWDATASEND = true;
-      }
     }
     if (RUNBLYNK) {
       Blynk.run();
+      if (POSTDOMINATIONSCORETOBLYNK) {
+        POSTDOMINATIONSCORETOBLYNK = false;
+        PostDominationScore();
+      }
     }
     delay(1); // this has to be here or the esp32 will just keep rebooting
   }
