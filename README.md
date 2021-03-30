@@ -1,17 +1,23 @@
 JBOX
+======
 
+Description:
+------------
 BRX compatible utility box for interactive game play
 
-Required Components: 
+Required Components:
+--------------------
 Wemos D1 Mini ESP32 (1), IR Receiver TSOP4138 or similar (1) and or 
 TSAL6400 Emitter (4); one or the other or both as a bare minimum.
 
-Optional Components: 
+Optional Components:
+--------------------
 IR Receiver TSOP4138 (1), TSAL6400 Emitter (4), 
 SS8550 Transistors (2), Piezo Buzzer (1), RGB Common Cathode 5mm LED (1), 
 RYLR896 LORA module (1), Resistors as indicated on schematic (multiple)
 
-Basic Concepts: 
+Basic Concepts:
+---------------
 The JBOX is a game box or accessory for the BRX line of taggers, if desired, 
 the IR Protocol could be changed easily to configure the device to any laser 
 tag equipment line. The device uses BLE to be configured and set by a mobile 
@@ -27,17 +33,17 @@ back and forth over short wifi limitations.
 
 This allows for the following communications capabilities, all simultaneously: 
   LORA(device to device only)
-  WIFI(device to device only)
+  WIFI (ESPNOW) (device to device only)
   BLE(mobile to device)
   Infrared(device to BRX)
   MultiColor LED(Device to human eye).
 
 *******************************************************************************
-Main Functions: 
+Main Functions:
+---------------
 *******************************************************************************
-
-Basic Domination Game Mode: 
-
+Basic Domination Game Mode:
+---------------------------
 default domination mode that provides both player scoring and team scoring
 Scoring reports over BLE to paired mobile device and refreshes every time
 the score changes. To deactivate, select this option a second time to pause
@@ -45,9 +51,8 @@ the game/score. Recommended as a standalone base use only. Each time base is
 shot, the team or player who shot takes posession and the base emitts a tag
 that notifies player that the base (control point) was captured.
 
-
-Cointinuous IR Emitter: 
-
+Cointinuous IR Emitter:
+-----------------------
 Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
 Then activates a default interval spaced broadcast of a tag of choice.
 The tag of choice will need to be selected otherwise motion sensor is broadcasted.
@@ -55,9 +60,8 @@ This is good for use as a respawn station that requires no button or trigger
 mechanism to activate. The default delay is two seconds but can be modified
 by another setting option in the application. Another use is a proximity detector or mine.
 
-
 Tag Activated IR Emitter Mode:
-
+------------------------------
 This mode causes the base to send a selected tag type when a player shoots the base sensor. 
 Use for this is if you wanted a headset activated respawn station, med kit activated base, etc. 
 this is usefull for players to have an iR based interactive base that in order to activate
@@ -67,8 +71,8 @@ Provide a perk every so often and the cool down period can be adjusted via the a
 Have an activation limit option as well so if you wanted to limit respawns or med kits from the 
 Base this can easily be pre configured.
 
-Dual Mode - Continuous IR Emmitter and Tag activated base capture to change team alignment (freindly):
-
+Capturable Continuous IR Emmitter:
+----------------------------------
 This mode allows you to have a base continuously emit a specific team freindly ir tag/protocol of
 Choice, while allowing for other teams to capture the base after a pre-set or customizable number 
 Of tags landed on the base. What will this allow you to do? A sentry unit that radiates damage  to 
@@ -100,38 +104,77 @@ easily in a clear box with a power bank and allow for the ir to pass in and out.
 Steps to Make it work!!!
 -------------------------
 Step 1: Get the stuff!, list of supplies are listed above, any version of the ESP32
-will work and you can find the supplies from amazon, digikey, etc. I'll see if I
-can get the links on here soon enough. (Alternatively, Order a JBOX from me for my
-son to build and help him learn work/reward. Youth today need that.)
+        will work and you can find the supplies from amazon, digikey, etc. I'll see if I
+        can get the links on here soon enough. (Alternatively, Order a JBOX from me for my
+        son to build and help him learn work/reward. Youth today need that.)
 
 Step 2: Download and install Arduino IDE on your computer, install the libraries
-needed, ESP32 board manager, etc... yeah, this may take you a bit to get working
-if youve never done this before... so here are some tips/links:
-2a) Download and install Arduino: https://www.arduino.cc/en/software
-2b) Install Board Managers for ESP32: https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
-2c) Install the Blynk Library: http://help.blynk.cc/en/articles/512105-how-to-install-blynk-library-for-arduino-ide
-2d) Hopefully thats all, If you cant upload the ino file to your esp32, you may have to search to find a driver for your computer
-for your specific board your using and also maybe see if there is a library that didnt get installed that the code is using, i
-think that they are covered though from the link above
-2X) forget it and just get one from my son if all this is too much of see if someone in the community will make one for you
-
+        needed, ESP32 board manager, etc... yeah, this may take you a bit to get working
+        if youve never done this before... so here are some tips/links:
+  2a) Download and install Arduino: https://www.arduino.cc/en/software
+  2b) Install Board Managers for ESP32: https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
+  2c) Install the Blynk Library: http://help.blynk.cc/en/articles/512105-how-to-install-blynk-library-for-arduino-ide
+  2d) Hopefully thats all, If you cant upload the ino file to your esp32, you may have to search to find a driver for your computer
+      for your specific board your using and also maybe see if there is a library that didnt get installed that the code is using, i
+      think that they are covered though from the link above
+  2X) forget it and just get one from my son if all this is too much of see if someone in the community will make one for you
 
 Step 3: Download and install the Blynk App to your bluetooth enabled mobile device: 
-3a) Google Play: https://play.google.com/store/apps/details?id=cc.blynk
-3b) Apple Store: https://apps.apple.com/us/app/blynk-iot-for-arduino-esp32/id808760481
+  3a) Google Play: https://play.google.com/store/apps/details?id=cc.blynk
+  3b) Apple Store: https://apps.apple.com/us/app/blynk-iot-for-arduino-esp32/id808760481
 
 Step 4: Install a clone of my Blynk Application
-4a) follow this link and scroll to the very last two steps: https://github.com/blynkkk/blynkkk.github.io/blob/master/Sharing.md
-4b) use the qr image in this github to access to my Blynk Project for your own cloned copy
+  4a) follow this link and scroll to the very last two steps: https://github.com/blynkkk/blynkkk.github.io/blob/master/Sharing.md
+  4b) use the qr image in this github to access to my Blynk Project for your own cloned copy
 
 Step 5: Open the Ino file from this repository on github.com
 
 Step 6: Youll need to change the Blynk Token in your ino file... 
-6a) Search the ino file by pressing ctrl+f to find the following: "char auth[] ="
-6b) Replace the "xxdlksuhneo84u498" craxy number/letter combination with what is found in your cloned blynk app, see link:
-https://learn.sparkfun.com/tutorials/blynk-board-arduino-development-guide/get-a-blynk-auth-token#:~:text=To%20find%20an%20existing%20Blynk,and%20a%20couple%20handy%20buttons.
+  6a) Search the ino file by pressing ctrl+f to find the following: "char auth[] ="
+  6b) Replace the "xxdlksuhneo84u498" craxy number/letter combination with what is found in your cloned blynk app, see link:
+  https://learn.sparkfun.com/tutorials/blynk-board-arduino-development-guide/get-a-blynk-auth-token#:~:text=To%20find%20an%20existing%20Blynk,and%20a%20couple%20handy%20buttons.
 
 Step 7: Upload the ino (downloadable from this repository) to your esp32: https://www.dummies.com/computers/arduino/how-to-upload-a-sketch-to-an-arduino/
 
 Step 8: follow the App Use Video: (video coming soon)
+
+How To Use The App!!
+--------------------
+!!! IMPORTANT !!!
+Any time you change the main function in the App, you reset team alignment for 
+the JBOX. Be sure to modify the sub-settings only AFTER you change the main 
+function for game play/interaction so that the JBOX does exactly what you want.
+Most settings are not saved but reset when going between main base functions.
+
+NOTE: The JBOX boots up in "Basic Domination Mode" so it will start out of the box
+running a domination game as soon as the first team tags it to "capture it".
+
+Step 1: Select a main function for the JBOX to execute
+
+Step 2: Select the applicable functions that would apply to the main function selected:
+  2a) Here are the applicable sub-settings for each function:
+        
+        Basic Domination Mode: 
+          No Sub Options
+          Reset - Resets Score and stops the timer
+          Selecting the main function "basic domination mode" stops the clock on the game
+        
+        Continuous IR Emitter:
+          IR Emitter Type - Changes the tag type sent by base (motion sensor / alarm is default)
+          Team Friendly Selection - Changes the team protocol of the tag being sent by base (default is yellow)
+          Adjust Continuous Emitter Frequency - changes the time between tags sent by base
+        
+        Tag Activated IR Emitter:
+          IR Emitter Type - Changes the tag type sent by base (motion sensor / alarm is default)
+          Team Friendly Selection - Changes the team protocol of the tag being sent by base (default is yellow)
+          Adjust/Set Tag Activated Cool Down - Base will have a delay between its ability to be activated (Default is off)
+        
+        Capturable Continuous IR Emitter:
+          IR Emitter Type - Changes the tag type sent by base (motion sensor / alarm is default)
+          Team Friendly Selection - Changes the team protocol of the tag being sent by base (default is yellow)
+          Adjust Continuous Emitter Frequency - changes the time between tags sent by base
+          Capturable IR Base Tag Count - Sets the minimum number of tags needed to be received by a team in order to capture the base (default 10)
+          
+
+
 
