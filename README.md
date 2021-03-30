@@ -1,6 +1,7 @@
-JBOX
-======
-
+*******************************************************************************
+JBOX INTRODUCTION
+=================
+*******************************************************************************
 Description:
 ------------
 BRX compatible utility box for interactive game play
@@ -40,7 +41,7 @@ This allows for the following communications capabilities, all simultaneously:
 
 *******************************************************************************
 Main Functions:
----------------
+================
 *******************************************************************************
 Basic Domination Game Mode:
 ---------------------------
@@ -86,8 +87,10 @@ For all.
 
 *******************************************************************************
 How To Use The JBOX: 
+====================
 *******************************************************************************
-JEDGE, if your not familiar with it, is pretty complicated to get set up and one
+Notes:
+If your not familiar with it, is pretty complicated to get set up and one
 needs to have a pretty decent grasp of basic electronics and networking in order
 to get it up and running. My goal for JBOX is to make it user freindly so there
 is little customization needed for the accessory, therefore, I'm putting together
