@@ -158,25 +158,26 @@ Step 2: Select the applicable functions that would apply to the main function se
   2a) Here are the applicable sub-settings for each function:
         
         Basic Domination Mode: 
-          No Sub Options
-          Reset - Resets Score and stops the timer
-          Selecting the main function "basic domination mode" stops the clock on the game
+          - No Sub Options
+          - Reset - Resets Score and stops the timer
+          - Selecting the main function "basic domination mode" stops the clock on the game
         
         Continuous IR Emitter:
-          IR Emitter Type - Changes the tag type sent by base (motion sensor / alarm is default)
-          Team Friendly Selection - Changes the team protocol of the tag being sent by base (default is yellow)
-          Adjust Continuous Emitter Frequency - changes the time between tags sent by base
+          - IR Emitter Type - Changes the tag type sent by base (motion sensor / alarm is default)
+          - Team Friendly Selection - Changes the team protocol of the tag being sent by base (default is yellow)
+          - Adjust Continuous Emitter Frequency - changes the time between tags sent by base
         
         Tag Activated IR Emitter:
-          IR Emitter Type - Changes the tag type sent by base (motion sensor / alarm is default)
-          Team Friendly Selection - Changes the team protocol of the tag being sent by base (default is yellow)
-          Adjust/Set Tag Activated Cool Down - Base will have a delay between its ability to be activated (Default is off)
+          - IR Emitter Type - Changes the tag type sent by base (motion sensor / alarm is default)
+          - Team Friendly Selection - Changes the team protocol of the tag being sent by base (default is yellow)
+          - Adjust/Set Tag Activated Cool Down - Base will have a delay between its ability to be activated (Default is off)
         
         Capturable Continuous IR Emitter:
-          IR Emitter Type - Changes the tag type sent by base (motion sensor / alarm is default)
-          Team Friendly Selection - Changes the team protocol of the tag being sent by base (default is yellow)
-          Adjust Continuous Emitter Frequency - changes the time between tags sent by base
-          Capturable IR Base Tag Count - Sets the minimum number of tags needed to be received by a team in order to capture the base (default 10)
+          - IR Emitter Type - Changes the tag type sent by base (motion sensor / alarm is default)
+          - Team Friendly Selection - Changes the team protocol of the tag being sent by base (default is yellow)
+          - Adjust Continuous Emitter Frequency - changes the time between tags sent by base
+          - Capturable IR Base Tag Count - Sets the minimum number of tags needed to be received by a team in order
+            to capture the base (default 10)
           
 
 
