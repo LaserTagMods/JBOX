@@ -138,6 +138,7 @@ Step 6: Youll need to change the Blynk Token in your ino file...
   https://learn.sparkfun.com/tutorials/blynk-board-arduino-development-guide/get-a-blynk-auth-token#:~:text=To%20find%20an%20existing%20Blynk,and%20a%20couple%20handy%20buttons.
 
 Step 7: Upload the ino (downloadable from this repository) to your esp32: https://www.dummies.com/computers/arduino/how-to-upload-a-sketch-to-an-arduino/
+  7a) be sure to set the "partition scheme" under to tools menu to "large apps (no OTA)"
 
 Step 8: follow the App Use Video: (video coming soon)
 
