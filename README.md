@@ -79,3 +79,59 @@ In the play area. At the start of the game teams race to establish bases to thei
 While some defend, others try to capture others. As the game progresses, teams with unlimited respawns 
 Will thin out as they no longer have a base to respawn at, creating quite an ever changing field strategy
 For all.
+
+*******************************************************************************
+How To Use The JBOX: 
+*******************************************************************************
+JEDGE, if your not familiar with it, is pretty complicated to get set up and one
+needs to have a pretty decent grasp of basic electronics and networking in order
+to get it up and running. My goal for JBOX is to make it user freindly so there
+is little customization needed for the accessory, therefore, I'm putting together
+a PCB circuit board for the build. If someone wants to customize their own build
+of a cool looking 3d printed base, cool! Make me one? :) and that is why I have
+a schematic for my build that allows for anyone to get as creative as they want
+to with their JBOX, or alternatively, just get a JBOX PCB board. Make your own
+and have it printed, or possibly my son will build them and sell them and I'll
+QC it so it is a good learning opportunity for him as well as life lesson on work
+and pay. So if you want one built, just let me know, otherwise, go wild and make
+your own. It's open source so have at it.The PCB that we are building will fit
+easily in a clear box with a power bank and allow for the ir to pass in and out.
+
+Steps to Make it work!!!
+-------------------------
+Step 1: Get the stuff!, list of supplies are listed above, any version of the ESP32
+will work and you can find the supplies from amazon, digikey, etc. I'll see if I
+can get the links on here soon enough. (Alternatively, Order a JBOX from me for my
+son to build and help him learn work/reward. Youth today need that.)
+
+Step 2: Download and install Arduino IDE on your computer, install the libraries
+needed, ESP32 board manager, etc... yeah, this may take you a bit to get working
+if youve never done this before... so here are some tips/links:
+2a) Download and install Arduino: https://www.arduino.cc/en/software
+2b) Install Board Managers for ESP32: https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
+2c) Install the Blynk Library: http://help.blynk.cc/en/articles/512105-how-to-install-blynk-library-for-arduino-ide
+2d) Hopefully thats all, If you cant upload the ino file to your esp32, you may have to search to find a driver for your computer
+for your specific board your using and also maybe see if there is a library that didnt get installed that the code is using, i
+think that they are covered though from the link above
+2X) forget it and just get one from my son if all this is too much of see if someone in the community will make one for you
+
+
+Step 3: Download and install the Blynk App to your bluetooth enabled mobile device: 
+3a) Google Play: https://play.google.com/store/apps/details?id=cc.blynk
+3b) Apple Store: https://apps.apple.com/us/app/blynk-iot-for-arduino-esp32/id808760481
+
+Step 4: Install a clone of my Blynk Application
+4a) follow this link and scroll to the very last two steps: https://github.com/blynkkk/blynkkk.github.io/blob/master/Sharing.md
+4b) use the qr image in this github to access to my Blynk Project for your own cloned copy
+
+Step 5: Open the Ino file from this repository on github.com
+
+Step 6: Youll need to change the Blynk Token in your ino file... 
+6a) Search the ino file by pressing ctrl+f to find the following: "char auth[] ="
+6b) Replace the "xxdlksuhneo84u498" craxy number/letter combination with what is found in your cloned blynk app, see link:
+https://learn.sparkfun.com/tutorials/blynk-board-arduino-development-guide/get-a-blynk-auth-token#:~:text=To%20find%20an%20existing%20Blynk,and%20a%20couple%20handy%20buttons.
+
+Step 7: Upload the ino (downloadable from this repository) to your esp32: https://www.dummies.com/computers/arduino/how-to-upload-a-sketch-to-an-arduino/
+
+Step 8: follow the App Use Video: (video coming soon)
+
