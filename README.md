@@ -85,6 +85,41 @@ While some defend, others try to capture others. As the game progresses, teams w
 Will thin out as they no longer have a base to respawn at, creating quite an ever changing field strategy
 For all.
 
+Capture the Flag:
+-----------------
+This mode allows you to have two bases that communicate with each other (battle lines) or interact with 
+JEDGE modded taggers. The two modes are described below but general play/set up is the same. JEDGE is a more 
+concise capture the flag game play. LoRa is used for communication between bases. If you do not have LoRa 
+Modules installed (see optional components) the game will not work.
+
+General setup/play:
+Two bases are used and set up as capture the flag, two bases are set up as respawn stations. Each team will 
+have a respawn station and a capture the flag base aligned with their team (friendly). It is recommended that 
+each teams respawn station and flag base are located in different locations requiring defending players, that 
+are tagged out, to retreat to their respawn station and have to return quickly to continue to defend. Team 
+mates will need to capture the other teams flag by shooting it. The same player will now need to quickly return 
+to their flag, without being tagged out, and “hang the flag” by shooting their own (friendly) base. 
+
+When an enemy flag is “captured” by a player, the flag sends a rf notification to the players base/flag, informing 
+the player’s flag that the player has now captured a flag and has one in his possession. When the same player 
+returns to his own flag, tags his flag, his friendly flag will check to see if he carries a flag based upon previously 
+receiving the notification from the enemies flag. If this is the case, the game is over, the base exits capture the flag 
+mode and flashes the color that the team has won. It also sends a signal to the enemy flag to do the same. Both bases 
+also emit an IR tag that sounds an alarm on the players taggers that are near by to ensure players know the game has ended.
+
+If a player is tagged out after capturing a flag, he will need to respawn at his teams respawn station. When he respawns at
+the respawn station, he will need to use his respawn request tag from his headset to respawn (tag activated respawn station). 
+When the player activated the respawn station, the respawn station will send a notification (via LoRa) to the freindly flag, 
+to now disregard that players tag so that he can not “hang a flag.” 
+
+There is potential for players to cheat this mode by respawning from another players respawn request and then be able to go 
+to their friendly base and “hang the flag”. This is why JEDGE is more accurate...
+
+JEDGE DIFFERENCE: if using JEDGE modified BRXs, the enemy flag will enable the tagger to be in flag carrier mode until it is 
+tagged out. Flag carrier mode provides the player with a special weapon that will enable the activation of a flag hang. Planers 
+exit flag carrier mode when they are tagged out an need to respawn. This is a much more effective method and avoids potential 
+cheating. 
+
 *******************************************************************************
 How To Use The JBOX: 
 ====================
