@@ -14,14 +14,15 @@ TSAL6400 Emitter (4); one or the other or both as a bare minimum.
 Optional Components:
 --------------------
 IR Receiver TSOP4138 (1), TSAL6400 Emitter (4), 
-SS8550 Transistors (2), Piezo Buzzer (1), RGB Common Cathode 5mm LED (1), 
+SS8550 Transistors (2) or 2N2222 Transistors (alternate design), Piezo Buzzer (1), RGB Common Cathode 5mm LED (1), 
 RYLR896 LORA module (1), Resistors as indicated on schematic (multiple)
 
 Basic Concepts:
 ---------------
 The JBOX is a game box or accessory for the BRX line of taggers, if desired, 
 the IR Protocol could be changed easily to configure the device to any laser 
-tag equipment line. The device uses BLE to be configured and set by a mobile 
+tag equipment line. I hope to, in the future, make it compatible with all my 
+favorite laser tag gear. The device uses BLE to be configured and set by a mobile 
 device using the ITO control platform "BLYNK". A customized Blynk application 
 has been developed and is used for configuring and customizing the functions 
 of the JBOX device. If all components listed above are integrated, the device 
@@ -71,6 +72,10 @@ A drone to tag other players. It also has a cool down function, this way it can 
 Provide a perk every so often and the cool down period can be adjusted via the app. It will also
 Have an activation limit option as well so if you wanted to limit respawns or med kits from the 
 Base this can easily be pre configured.
+
+If this mode is engaged and the respawn station tag is selected, the base will send a Lora signal
+Out each time the respawn is requested. Also it only recognizes respawn request signal from the 
+Headset. 
 
 Capturable Continuous IR Emmitter:
 ----------------------------------
@@ -214,7 +219,11 @@ Step 2: Select the applicable functions that would apply to the main function se
           - Adjust Continuous Emitter Frequency - changes the time between tags sent by base
           - Capturable IR Base Tag Count - Sets the minimum number of tags needed to be received by a team in order
             to capture the base (default 10)
-          
+
+        Capture The Flag:
+          - Team Freindly Selection - changes team alignment  
+          - Capturable IR Base Tag Count - Sets how many tags are needed to capture the enemy flag
+          - 
 
 
 
