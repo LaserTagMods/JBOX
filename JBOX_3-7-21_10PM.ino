@@ -73,7 +73,8 @@ bool RUNBLYNK = true;
 bool SETUPBLYNK = true;
 
 // Attach virtual serial terminal to Virtual Pin V100
-WidgetTerminal terminal(V100);
+WidgetTerminal scoreterminal(V100);
+WidgetTerminal debugmonitor(V101);
 
 //*************************************************************************
 //********************** ESPNOW VARIABLE DELCARATIONS *********************
@@ -135,8 +136,9 @@ int ESPNOWPreviousMillis = 0;
 //*************************************************************************
 //*********************** LORA VARIABLE DELCARATIONS **********************
 //*************************************************************************
-String received; // string used to record data coming in
+String LoRaDataReceived; // string used to record data coming in
 String tokenStrings[5]; // used to break out the incoming data for checks/balances
+String LoRaDataToSend; // used to store data being sent from this device
 
 bool LORALISTEN = false; // a trigger used to enable the radio in (listening)
 bool ENABLELORATRANSMIT = false; // a trigger used to enable transmitting data
@@ -209,7 +211,7 @@ int Critical = 0;
 int Power = 0;
 
 unsigned long irledpreviousMillis = 0;
-long irledinterval = 2000;
+long irledinterval = 5000;
 
 // Function Execution
 bool BASECONTINUOUSIRPULSE = false; // enables/disables continuous pulsing of ir
@@ -220,7 +222,7 @@ long CoolDownStart = 0; // used for a delay timer
 long CoolDownInterval = 0;
 
 // IR Protocols
-bool CONTROLPOINTCAPTURED = true; // set as default for running basic domination game
+bool CONTROLPOINTLOST = true; // set as default for running basic domination game
 bool MOTIONSENSOR = false;
 bool SWAPBRX = false;
 bool OWNTHEZONE = false;
@@ -411,31 +413,31 @@ void initializeblynk() {
   Blynk.begin(auth);
   
   // Clear the terminal content
-  terminal.clear();
+  scoreterminal.clear();
 
   // This will print Blynk Software version to the Terminal Widget when
   // your hardware gets connected to Blynk Server
-  terminal.println("Blynk v" BLYNK_VERSION ": Device started");
-  terminal.println("-------------");
-  terminal.println("Type 'Marco' and get a reply, or type");
-  terminal.println("anything else and get it printed back.");
-  terminal.flush();
+  scoreterminal.println("Blynk v" BLYNK_VERSION ": Device started");
+  scoreterminal.println("-------------");
+  scoreterminal.println("Type 'Marco' and get a reply, or type");
+  scoreterminal.println("anything else and get it printed back.");
+  scoreterminal.flush();
 }
 // You can send commands from Terminal to your hardware. Just use
 // the same Virtual Pin as your Terminal Widget
-BLYNK_WRITE(V100) { // test terminal
+BLYNK_WRITE(V100) { // test debugmonitor
   // if you type "Marco" into Terminal Widget - it will respond: "Polo:"
   if (String("Marco") == param.asStr()) {
-    terminal.println("You said: 'Marco'") ;
-    terminal.println("I said: 'Polo'") ;
+    debugmonitor.println("You said: 'Marco'") ;
+    debugmonitor.println("I said: 'Polo'") ;
   } else {
     // Send it back
-    terminal.print("You said:");
-    terminal.write(param.getBuffer(), param.getLength());
-    terminal.println();
+    debugmonitor.print("You said:");
+    debugmonitor.write(param.getBuffer(), param.getLength());
+    debugmonitor.println();
   }
   // Ensure everything is sent
-  terminal.flush();
+  debugmonitor.flush();
 }
 BLYNK_WRITE(V0) {// Options Menu
   int b=param.asInt();
@@ -449,14 +451,14 @@ BLYNK_WRITE(V0) {// Options Menu
     // shot, the team or player who shot takes posession and the base emitts a tag
     // that notifies player that the base (control point) was captured.
     Serial.println("Basic Domination Mode - Default!!!");
-    terminal.println("Basic Domination Mode - Default!!!");
+    debugmonitor.println("Basic Domination Mode - Default!!!");
     Function = 1;
     RGBWHITE = true;
     CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
     DOMINATIONCLOCK = false; // stops the game from going if already running
     BASICDOMINATION = true; // enables this game mode
     ResetAllIRProtocols(); // resets all ir protocols
-    CONTROLPOINTCAPTURED = true; // enables control point captured call out
+    CONTROLPOINTLOST = true; // enables control point captured call out
     TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
     BASECONTINUOUSIRPULSE = false;
     ENABLEIRRECEIVER = true;
@@ -469,7 +471,7 @@ BLYNK_WRITE(V0) {// Options Menu
     // mechanism to activate. The default delay is two seconds but can be modified
     // by another setting option in the application. Another use is a proximity detector or mine.
     Serial.println("Continuous IR Emitter!!!");
-    terminal.println("Continuous IR Emitter!!!");
+    debugmonitor.println("Continuous IR Emitter!!!");
     Function = 2;
     Team = 2;
     RGBGREEN = true;
@@ -480,14 +482,13 @@ BLYNK_WRITE(V0) {// Options Menu
     ResetAllIRProtocols(); // Resets all ir protocols
     TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
     ENABLEIRRECEIVER = false; // deactivates the ir receiver to avoid unnecessary processes
-    MOTIONSENSOR = true;
   }
   if (b==3) { // Tag Activated Ir Emitter
     // Clears out any existing IR and Base Game Settings
     // Sets Default for tag activation to send an IR emitter protocol for "motion sensor" as default
     // 
     Serial.println("Tage Activated IR Emitter!!!");
-    terminal.println("Tage Activated IR Emitter!!!");
+    debugmonitor.println("Tage Activated IR Emitter!!!");
     Function = 3;
     Team = 2;
     RGBWHITE = true;
@@ -495,7 +496,7 @@ BLYNK_WRITE(V0) {// Options Menu
     BASECONTINUOUSIRPULSE = false;
     DOMINATIONCLOCK = false; // stops the game from going if already running
     BASICDOMINATION = false; // enables this game mode
-    CONTROLPOINTCAPTURED = false; // enables control point captured call out
+    CONTROLPOINTLOST = false; // enables control point captured call out
     TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
     ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
     ResetAllIRProtocols(); // resets all ir protocols
@@ -509,21 +510,21 @@ BLYNK_WRITE(V0) {// Options Menu
     // bases start out as default red team
     // recommend doing a delay for respawn time to limit players ability to respawn right away on a base they may be guarding
     Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
-    terminal.println("Dual Mode - Capturable Continuous IR Emitter!!!");
+    debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
     Function = 4;
     Team = 2; // sets all bases to default to red team
     RGBWHITE = true;
     BASECONTINUOUSIRPULSE = false;
     DOMINATIONCLOCK = false; // stops the game from going if already running
     BASICDOMINATION = false; // enables this game mode
-    CONTROLPOINTCAPTURED = false; // enables control point captured call out
+    CONTROLPOINTLOST = false; // enables control point captured call out
     TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
     ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
     ResetAllIRProtocols(); // reset all ir protocols
     RESPAWNSTATION = true; // enables the alarm sound tag protocol
     CAPTURABLEEMITTER = true; // enables the team freindly to be toggled via IR  
   }
-  terminal.flush();
+  debugmonitor.flush();
 }
 BLYNK_WRITE(V1) { // set IR Protocol to be used
   int b=param.asInt();
@@ -531,74 +532,74 @@ BLYNK_WRITE(V1) { // set IR Protocol to be used
   if (b==1) {
     MOTIONSENSOR = true;
     Serial.println("Motion Sensor Enabled!!!");
-    terminal.println("Motion Sensor Enabled!!!");
+    debugmonitor.println("Motion Sensor Enabled!!!");
   }
   if (b==2) {
     CAPTURETHEFLAG = true;
     Serial.println("Capture the Flag Enabled!!!");
-    terminal.println("Capture the Flag Enabled!!!");
+    debugmonitor.println("Capture the Flag Enabled!!!");
   }
   if (b==3) {
-    CONTROLPOINTCAPTURED = true;
+    CONTROLPOINTLOST = true;
     Serial.println("Control Point Captured Enabled!!!");
-    terminal.println("Control Point Captured Enabled!!!");
+    debugmonitor.println("Control Point Captured Enabled!!!");
   }
   if (b==4) {
     GASGRENADE = true;
     Serial.println("Gas Grenade Enabled!!!");
-    terminal.println("Gas Grenade Enabled!!!");
+    debugmonitor.println("Gas Grenade Enabled!!!");
   }
   if (b==5) {
     LIGHTDAMAGE = true;
     Serial.println("Light Damage Enabled!!!");
-    terminal.println("Light Damage Enabled!!!");
+    debugmonitor.println("Light Damage Enabled!!!");
   }
   if (b==6) {
     MEDIUMDAMAGE = true;
     Serial.println("Medium Damage Enabled!!!");
-    terminal.println("Medium Damage Enabled!!!");
+    debugmonitor.println("Medium Damage Enabled!!!");
   }
   if (b==7) {
     HEAVYDAMAGE = true;
     Serial.println("Heavy Damage Enabled!!!");
-    terminal.println("Heavy Damage Enabled!!!");
+    debugmonitor.println("Heavy Damage Enabled!!!");
   }
   if (b==8) {
     FRAG = true;
     Serial.println("Explosive Damage Enabled!!!");
-    terminal.println("Explosive Damage Enabled!!!");
+    debugmonitor.println("Explosive Damage Enabled!!!");
   }
   if (b==9) {
     RESPAWNSTATION = true;
     Serial.println("Respawn Station Enabled!!!");
-    terminal.println("Respawn Station Enabled!!!");
+    debugmonitor.println("Respawn Station Enabled!!!");
   }
   if (b==10) {
     MEDKIT = true;
     Serial.println("Medkit Enabled!!!");
-    terminal.println("Medkit Enabled!!!");
+    debugmonitor.println("Medkit Enabled!!!");
   }
   if (b==11) {
     LOOTBOX = true;
     Serial.println("Loot Box Enabled!!!");
-    terminal.println("Loot Box Enabled!!!");
+    debugmonitor.println("Loot Box Enabled!!!");
   }
   if (b==12) {
     ARMORBOOST = true;
     Serial.println("Armor Boost Enabled!!!");
-    terminal.println("Armor Boost Enabled!!!");
+    debugmonitor.println("Armor Boost Enabled!!!");
   }
   if (b==13) {
     SHEILDS = true;
     Serial.println("Sheilds Enabled!!!");
-    terminal.println("Sheilds Enabled!!!");
+    debugmonitor.println("Sheilds Enabled!!!");
   }
   if (b==14) {
     OWNTHEZONE = true;
     Serial.println("Own The Zone Enabled!!!");
-    terminal.println("Own The Zone Enabled!!!");
+    debugmonitor.println("Own The Zone Enabled!!!");
   }
-  terminal.flush();
+  debugmonitor.flush();
 }
 BLYNK_WRITE(V2) { // Set Freindly Team
   int b=param.asInt();
@@ -608,33 +609,33 @@ BLYNK_WRITE(V2) { // Set Freindly Team
     Team = 2;
     RGBYELLOW = true;
     Serial.println("Team Set to Yellow!!!");
-    terminal.println("Team Set to Yellow!!!");
+    debugmonitor.println("Team Set to Yellow!!!");
   }
   if (b==2) {
     Team = 0;
     RGBRED = true;
     Serial.println("Team Set to Red!!!");
-    terminal.println("Team Set to Red!!!");
+    debugmonitor.println("Team Set to Red!!!");
   }
   if (b==3) {
     Team = 1;
     RGBBLUE = true;
     Serial.println("Team Set to Blue!!!");
-    terminal.println("Team Set to Blue!!!");
+    debugmonitor.println("Team Set to Blue!!!");
   }
   if (b==4) {
     Team = 2;
     RGBYELLOW = true;
     Serial.println("Team Set to Yellow!!!");
-    terminal.println("Team Set to Yellow!!!");
+    debugmonitor.println("Team Set to Yellow!!!");
   }
   if (b==5) {
     Team = 3;
     RGBGREEN = true;
     Serial.println("Team Set to Green!!!");
-    terminal.println("Team Set to Green!!!");
+    debugmonitor.println("Team Set to Green!!!");
   }
-  terminal.flush();
+  debugmonitor.flush();
 }
 BLYNK_WRITE(V3) { // Adjust Continuous IR Tag frequency
 int b=param.asInt();
@@ -664,16 +665,16 @@ int b=param.asInt();
   }
   Serial.print("Tag Frequency Set to: ");
   Serial.println(irledinterval);
-  terminal.print("Tag Frequency Set to: ");
-  terminal.println(irledinterval);
-  terminal.flush();
+  debugmonitor.print("Tag Frequency Set to: ");
+  debugmonitor.println(irledinterval);
+  debugmonitor.flush();
 }
 BLYNK_WRITE(V4) { // Adjust/Applies a cool down to Tag Activated IR Emitter Mode
 int b=param.asInt();
   if (b==1) {
     TAGACTIVATEDIRCOOLDOWN = false;
     Serial.println("Cool Down Deactivated");  
-    terminal.println("Cool Down Deactivated");
+    debugmonitor.println("Cool Down Deactivated");
   } else {
     if (b==2) {
       TAGACTIVATEDIRCOOLDOWN = true;
@@ -726,11 +727,11 @@ int b=param.asInt();
     Serial.println("Cool Down Activated"); 
     Serial.print("Cool Down Timer Set to: ");
     Serial.println(CoolDownInterval);
-    terminal.println("Cool Down Activated"); 
-    terminal.print("Cool Down Timer Set to: ");
-    terminal.println(CoolDownInterval);
+    debugmonitor.println("Cool Down Activated"); 
+    debugmonitor.print("Cool Down Timer Set to: ");
+    debugmonitor.println(CoolDownInterval);
   }
-  terminal.flush();
+  debugmonitor.flush();
 }
 BLYNK_WRITE(V5) { // Adjust Capturable IR Base Tag Counter
   int b=param.asInt();
@@ -766,9 +767,9 @@ BLYNK_WRITE(V5) { // Adjust Capturable IR Base Tag Counter
   }
   Serial.print("Required Capturable Emitter Counter Set to: ");
   Serial.println(RequiredCapturableEmitterCounter);
-  terminal.print("Required Capturable Emitter Counter Set to: ");
-  terminal.println(RequiredCapturableEmitterCounter);
-  terminal.flush();
+  debugmonitor.print("Required Capturable Emitter Counter Set to: ");
+  debugmonitor.println(RequiredCapturableEmitterCounter);
+  debugmonitor.flush();
 }
 
 //*************************************************************************
@@ -778,12 +779,12 @@ void ReceiveTransmission() {
   // this is an object used to listen to the serial inputs from the LoRa Module
   if(Serial1.available()>0){ // checking to see if there is anything incoming from the LoRa module
     Serial.println("Got Data"); // prints a notification that data was received
-    received = Serial1.readString(); // stores the incoming data to the pre set string
-    Serial.print("Received: "); // printing data received
-    Serial.println(received); // printing data received
-    if(received.startsWith("+RCV")){ // checking if the data was from another LoRa module
+    LoRaDataReceived = Serial1.readString(); // stores the incoming data to the pre set string
+    Serial.print("LoRaDataReceived: "); // printing data received
+    Serial.println(LoRaDataReceived); // printing data received
+    if(LoRaDataReceived.startsWith("+RCV")){ // checking if the data was from another LoRa module
       // convert the received data into a string array for comparing data
-      char *ptr = strtok((char*)received.c_str(), ",");
+      char *ptr = strtok((char*)LoRaDataReceived.c_str(), ",");
       int index = 0;
       while (ptr != NULL){
         tokenStrings[index] = ptr;
@@ -803,13 +804,35 @@ void ReceiveTransmission() {
         Serial.println(tokenStrings[3]);
         Serial.print("Token 4: ");
         Serial.println(tokenStrings[4]);
-        
+        int LoRaDataVerification = tokenStrings[2].toInt();
         // check the data for a data match
-        if(tokenStrings[2] == "1"){  //in this case our single received byte would always be at the 11th position
-          digitalWrite(LED_BUILTIN, HIGH); // iluminte the onboard led
-          receivercounter();
-          //TRANSMIT = true; // setting the transmission trigger to enable transmission
+        if(LoRaDataVerification < 1000) {
+          // Confirmed the data is coming from a Respawn Station, remaining is the player ID
+          if (LoRaDataVerification < 100) {
+            // Confirmed this is team red were receiving data about
+            int IncomingPlayerID = LoRaDataVerification;
+            int IncomingTeamID = 0;
+          } else {
+            if (LoRaDataVerification < 200) {
+              // Confirmed this is team blue were receiving data about
+              int IncomingPlayerID = LoRaDataVerification - 100;
+              int IncomingTeamID = 1;
+            } else {
+              if (LoRaDataVerification < 300) {
+                // Confirmed this is team yellow were receiving data about
+                int IncomingPlayerID = LoRaDataVerification - 200;
+                int IncomingTeamID = 2;
+              } else {
+                  // Confirmed this is team green were receiving data about
+                  int IncomingPlayerID = LoRaDataVerification - 300;
+                  int IncomingTeamID = 3;
+                }
+            }
+          }
         }
+        digitalWrite(LED_BUILTIN, HIGH); // iluminte the onboard led
+        receivercounter();
+        //TRANSMIT = true; // setting the transmission trigger to enable transmission
       }
     }
 }
@@ -825,14 +848,15 @@ void receivercounter() {
   digitalWrite(LED_BUILTIN, LOW); // turn onboard led off
 }
 void TransmitLoRa() {
-  // LETS RESPOND:
-  delay(5000);
-  //String Sender = (String(received[5])+String(received[6])+String(received[7])); // if needed to send a response to the sender, this function builds the needed string
-  Serial.println("Transmitting Confirmation"); // printing to serial monitor
-  //Serial1.print("AT+SEND="+Sender+",5,GotIt\r\n"); // used to send a confirmation to sender
-  Serial1.print("AT+SEND=0,1,5\r\n"); // used to send data to the specified recipeint
-  //Serial1.print("$PLAY,VA20,4,6,,,,,*");
-  Serial.println("Sent the '5' to device 0");
+  // LETS SEND SOMETHING:
+  // delay(5000);
+  // String LoRaDataToSend = (String(valueA)+String(valueB)+String(valueC)+String(valueD)+String(valueE)); 
+  // If needed to send a response to the sender, this function builds the needed string
+  Serial.println("Transmitting Via LoRa"); // printing to serial monitor
+  Serial1.print("AT+SEND=0,5,"+LoRaDataToSend+"\r\n"); // used to send a confirmation to sender
+  //  Serial1.print("AT+SEND=0,1,5\r\n"); // used to send data to the specified recipeint
+  //  Serial1.print("$PLAY,VA20,4,6,,,,,*");
+  //  Serial.println("Sent the '5' to device 0");
   transmissioncounter();
 }
 
@@ -915,7 +939,9 @@ void IDDamage() {
       // ID Damage by summing assigned values above based upon protocol values (1-64)
       DamageID=DID[0]+DID[1]+DID[2]+DID[3]+DID[4]+DID[6]+DID[7]+DID[5];
       Serial.print("Damage ID = ");
-      Serial.println(DamageID);      
+      Serial.println(DamageID); 
+      debugmonitor.print("Damage ID = ");
+      debugmonitor.println(DamageID);      
 }
 // this procedure breaksdown each bullet bit of the brx ir signal recieved and assigns the applicable bit value then adds them together to identify the player ID (1-64)
 void IDShot() {
@@ -943,7 +969,9 @@ void IDShot() {
       // ID Player by summing assigned values above based upon protocol values (1-64)
       ShotType=BID[0]+BID[1]+BID[2]+BID[3];
       Serial.print("Shot Type = ");
-      Serial.println(ShotType);      
+      Serial.println(ShotType); 
+      debugmonitor.print("Shot Type = ");
+      debugmonitor.println(ShotType);      
 }
 // this procedure breaksdown each player bit of the brx ir signal recieved and assigns the applicable bit value then adds them together to identify the player ID (1-64)
 void IDplayer() {
@@ -982,7 +1010,9 @@ void IDplayer() {
       // ID Player by summing assigned values above based upon protocol values (1-64)
       PlayerID=PID[0]+PID[1]+PID[2]+PID[3]+PID[4]+PID[5];
       Serial.print("Player ID = ");
-      Serial.println(PlayerID);      
+      Serial.println(PlayerID);
+      debugmonitor.print("Player ID = ");
+      debugmonitor.println(PlayerID);      
 }
 void teamID() {
       // check if the IR is from Red team
@@ -991,6 +1021,8 @@ void teamID() {
       TeamID = 0;
       Serial.print("team = Red = ");
       Serial.println(TeamID);
+      debugmonitor.print("team = Red = ");
+      debugmonitor.println(TeamID);
       }
       // check if the IR is from blue team 
       if (TT[0] < 750 && TT[1] > 750) {
@@ -998,6 +1030,8 @@ void teamID() {
       TeamID = 1;
       Serial.print("team = Blue = ");
       Serial.println(TeamID);
+      debugmonitor.print("team = Blue = ");
+      debugmonitor.println(TeamID);
       }
       // check if the IR is from green team 
       if (TT[0] > 750 && TT[1] > 750) {
@@ -1005,12 +1039,16 @@ void teamID() {
       TeamID = 3;
       Serial.print("team = Green = ");
       Serial.println(TeamID);
+      debugmonitor.print("team = Green = ");
+      debugmonitor.println(TeamID);
       }
       if (TT[0] > 750 && TT[1] < 750) {
       // sets the current team as red
       TeamID = 2;
       Serial.print("team = Yellow = ");
       Serial.println(TeamID);
+      debugmonitor.print("team = Yellow = ");
+      debugmonitor.println(TeamID);
       }
 }
 void IDPower() {
@@ -1019,11 +1057,13 @@ void IDPower() {
   if (UU[0] > 750 & UU[1] < 750) {PowerID = 2;}
   if (UU[0] > 750 & UU[1] > 750) {PowerID = 3;}
   Serial.println("Power = "+String(PowerID));
+  debugmonitor.println("Power = "+String(PowerID));
 }
 void IDCritical() {
   if (CC[0] < 750) {CriticalID = 0;}
   else {CriticalID = 1;}
   Serial.println("Criical = "+String(CriticalID));
+  debugmonitor.println("Criical = "+String(CriticalID));
 }
 // This procedure uses the preset IR_Sensor_Pin to determine if an ir received is BRX, if so it records the protocol received
 void receiveBRXir() {
@@ -1074,6 +1114,7 @@ void receiveBRXir() {
         IDDamage();
         IDPower();
         IDCritical();
+        debugmonitor.flush();
         if (CAPTURABLEEMITTER) {
           ChangeBaseAlignment();
         }
@@ -1292,7 +1333,7 @@ void MotionSensor() {
   Power = 0;
   SetIRProtocol();
 }
-void ControlPointCaptured() {
+void ControlPointLost() {
   BulletType = 15;
   Player = 63;
   if (Player == PlayerID) {
@@ -1382,15 +1423,20 @@ void VerifyCurrentIRTagSelection() {
   if (SHEILDS) {
     Sheilds(); // sets ir protocol to motion sensor yellow and sends it
   }
-  if (CONTROLPOINTCAPTURED) {
-    ControlPointCaptured();
+  if (CONTROLPOINTLOST) {
+    ControlPointLost();
   }
   if (OWNTHEZONE) {
     OwnTheZone();
   }
+  
   if (HITTAG) {
     HitTag();
   }
+  if (MOTIONSENSOR) {
+    MotionSensor();
+  }
+  BUZZ = true;
 }
 void SetIRProtocol() {
 // Set Player ID
@@ -1889,7 +1935,7 @@ void paritycheck() {
 }
 void ResetAllIRProtocols() {
   MOTIONSENSOR = false;
-  CONTROLPOINTCAPTURED = false;
+  CONTROLPOINTLOST = false;
   SWAPBRX = false;
   OWNTHEZONE = false;
   HITTAG = false;
@@ -2102,7 +2148,7 @@ void ChangeBaseAlignment() {
       BASECONTINUOUSIRPULSE = true;
       ResetAllIRProtocols();
       SINGLEIRPULSE = true; // allows for a one time pulse of an IR
-      CONTROLPOINTCAPTURED = true;
+      CONTROLPOINTLOST = true;
       BUZZ = true;
     } else { // if team tagging base did not meet minimum to control base
       int tempscore = CapturableEmitterScore[TeamID]; // temporarily stores the teams score that just shot the base
@@ -2130,66 +2176,66 @@ void AddPointToPlayerWithPossession() {
   PlayerScore[PlayerID]++;
 }
 void PostDominationScore() {
-  // Clear the terminal content
-  terminal.clear();
+  // Clear the scoreterminal content
+  scoreterminal.clear();
   // This will print score updates to Terminal Widget when
   // your hardware gets connected to Blynk Server
-  terminal.println("*******************************");
+  scoreterminal.println("*******************************");
   Serial.println("*******************************");
-  terminal.println("Domination Score Updated!");
+  scoreterminal.println("Domination Score Updated!");
   Serial.println("Domination Score Updated!");
-  terminal.println("*******************************");
+  scoreterminal.println("*******************************");
   Serial.println("*******************************");
   int teamcounter = 0;
   while (teamcounter < 4) {
     //Serial.println(teamcounter);
     if (TeamScore[teamcounter] > 0) {
       if (teamcounter == 0) {
-        terminal.print("Red Team Score: ");
+        scoreterminal.print("Red Team Score: ");
         Serial.print("Red Team Score: ");
-        terminal.println(TeamScore[teamcounter]);
+        scoreterminal.println(TeamScore[teamcounter]);
         Serial.println(TeamScore[teamcounter]);
       }
       if (teamcounter == 1) {
-        terminal.print("Blue Team Score: ");
+        scoreterminal.print("Blue Team Score: ");
         Serial.print("Blue Team Score: ");
-        terminal.println(TeamScore[teamcounter]);
+        scoreterminal.println(TeamScore[teamcounter]);
         Serial.println(TeamScore[teamcounter]);
       }
       if (teamcounter == 2) {
-        terminal.print("Yellow Team Score: ");
+        scoreterminal.print("Yellow Team Score: ");
         Serial.print("Yellow Team Score: ");
-        terminal.println(TeamScore[teamcounter]);
+        scoreterminal.println(TeamScore[teamcounter]);
         Serial.println(TeamScore[teamcounter]);
       }
       if (teamcounter == 3) {
-        terminal.print("Green Team Score: ");
+        scoreterminal.print("Green Team Score: ");
         Serial.print("Green Team Score: ");
-        terminal.println(TeamScore[teamcounter]);
+        scoreterminal.println(TeamScore[teamcounter]);
         Serial.println(TeamScore[teamcounter]);
       }
     }
     teamcounter++;
     vTaskDelay(0);
   }
-  terminal.println("");
+  scoreterminal.println("");
   int playercounter = 0;
   while (playercounter < 64) {
     //Serial.println(playercounter);
     if (PlayerScore[playercounter] > 0) {
-      terminal.print("Player ");
+      scoreterminal.print("Player ");
       Serial.print("Player ");
-      terminal.print(playercounter);
+      scoreterminal.print(playercounter);
       Serial.print(playercounter);
-      terminal.print(" Score: ");
+      scoreterminal.print(" Score: ");
       Serial.print(" Score: ");
-      terminal.println(PlayerScore[playercounter]);
+      scoreterminal.println(PlayerScore[playercounter]);
       Serial.println(PlayerScore[playercounter]);
     }
     playercounter++;
     vTaskDelay(0);
   }
-  terminal.flush();
+  scoreterminal.flush();
 }
 
 //******************************************************************************************
@@ -2225,6 +2271,7 @@ void loop1(void *pvParameters) {
         irledpreviousMillis = currentMillis0;
         VerifyCurrentIRTagSelection(); // runs object for identifying set ir protocol and send it
         Serial.println("Executed Base Continuous IR Pulse Object");
+        debugmonitor.println("Executed Base Continuous IR Pulse Object");
       }
     }
     // else {Serial.println("base continuous IR disabled");}
@@ -2346,8 +2393,8 @@ void setup() {
   Serial1.begin(115200, SERIAL_8N1, SERIAL1_RXPIN, SERIAL1_TXPIN); // setting up the LoRa pins
   Serial1.print("AT\r\n"); // checking that serial is working with LoRa module
   delay(100);
-  Serial1.print("AT+PARAMETER=10,7,1,7\r\n");    //For Less than 3Kms
-  //Serial1.print("AT+PARAMETER= 12,4,1,7\r\n");    //For More than 3Kms
+  //Serial1.print("AT+PARAMETER=10,7,1,7\r\n");    //For Less than 3Kms
+  Serial1.print("AT+PARAMETER= 12,4,1,7\r\n");    //For More than 3Kms
   delay(100);   //wait for module to respond
   Serial1.print("AT+BAND=868500000\r\n");    //Bandwidth set to 868.5MHz
   delay(100);   //wait for module to respond
