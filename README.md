@@ -59,8 +59,9 @@ Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
 Then activates a default interval spaced broadcast of a tag of choice.
 The tag of choice will need to be selected otherwise motion sensor is broadcasted.
 This is good for use as a respawn station that requires no button or trigger
-mechanism to activate. The default delay is two seconds but can be modified
-by another setting option in the application. Another use is a proximity detector or mine.
+mechanism to activate. The default delay is five seconds but can be modified
+by another setting option in the application. Another use is a proximity detector 
+or mine.
 
 Tag Activated IR Emitter Mode:
 ------------------------------
