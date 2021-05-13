@@ -171,7 +171,7 @@ Step 4: change the id of the JBOX if you will be having multiples, so that you c
 Step 7: Upload the ino (downloadable from this repository) to your esp32: https://www.dummies.com/computers/arduino/how-to-upload-a-sketch-to-an-arduino/
   7a) be sure to set the "partition scheme" under to tools menu to "large apps (no OTA)", It actually works under default... but I may update it with more data later
 
-Step 8: follow the App Use Video: (video coming soon)
+Step 8: follow the App Use Video: https://youtube.com/playlist?list=PLtNkckWI-JoIagJSkSNlhE9jXYgMjgS0m
 
 How To Use The App!!
 --------------------
