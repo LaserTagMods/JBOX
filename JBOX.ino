@@ -419,7 +419,7 @@ void UpdateWebApp0() {
   id = 0; // team id place holder
   pid = 0; // player id place holder
   while (id < 4) {
-    board["temporaryteamobjectives"+String(id)] = TeamObjectives[id];
+    board["temporaryteamobjectives"+String(id)] = TeamScore[id];
     id++;
   }
   String jsonString = JSON.stringify(board);
@@ -438,39 +438,39 @@ void UpdateWebApp2() {
       // Now Leader for Objectives:
       kmax=0; highest=0;
       for (int k=0; k<64; k++)
-      if (PlayerObjectives[k] > highest) {
-        highest = PlayerObjectives[k];
+      if (PlayerScore[k] > highest) {
+        highest = PlayerScore[k];
         kmax = k;
       }
       //  max now contains the largest kills value
       // kmax contains the index to the largest kills value.
       ObjectiveLeader[0] = kmax; // setting the slot 0 for the first place holder
       LeaderScore[0] = highest; // setts the leader score as a temp stored data for now      
-      PlayerObjectives[kmax]=0; // resetting the first place leader's score
+      PlayerScore[kmax]=0; // resetting the first place leader's score
       // we do it again for second place
       kmax=0; highest=0; // starting over again but now the highest score is gone
       for (int k=0; k<64; k++)
-      if (PlayerObjectives[k] > highest) {
-        highest = PlayerObjectives[k];
+      if (PlayerScore[k] > highest) {
+        highest = PlayerScore[k];
         kmax = k;
       }
       //  max now contains the largest kills value
       // kmax contains the index to the largest kills value.
       ObjectiveLeader[1] = kmax; // setting the slot 1 for the second place holder
       LeaderScore[1] = highest; // setts the leader score as a temp stored data for now      
-      PlayerObjectives[kmax]=0; // resetting the second place leader's score
+      PlayerScore[kmax]=0; // resetting the second place leader's score
       // one final time for third place
       kmax=0; highest=0; // starting over again but now the highest score is gone
       for (int k=0; k<64; k++)
-      if (PlayerObjectives[k] > highest) {
-        highest = PlayerObjectives[k];
+      if (PlayerScore[k] > highest) {
+        highest = PlayerScore[k];
         kmax = k;
       }
       //  max now contains the largest kills value
       // kmax contains the index to the largest kills value.
       ObjectiveLeader[2] = kmax; // setting the slot 2 for the first place holder
       LeaderScore[2] = highest; // setts the third score as a temp stored data for now      
-      PlayerObjectives[kmax]=0; // resetting the first place leader's score
+      PlayerScore[kmax]=0; // resetting the first place leader's score
       // now we send the updates to the blynk app
       Serial.println("The Dominator, Players with the most objective points:");
       Serial.println("1st place: Player " + String(ObjectiveLeader[0]) + " with " + String(LeaderScore[0]));
@@ -484,9 +484,9 @@ void UpdateWebApp2() {
       board["ObjectiveLeader2"] = ObjectiveLeader[2];
       board["Leader2Objectives"] = LeaderScore[2];
       // now get the player's scores back where they should be:
-      PlayerObjectives[ObjectiveLeader[0]] = LeaderScore[0];
-      PlayerObjectives[ObjectiveLeader[1]] = LeaderScore[1];
-      PlayerObjectives[ObjectiveLeader[2]] = LeaderScore[2];
+      PlayerScore[ObjectiveLeader[0]] = LeaderScore[0];
+      PlayerScore[ObjectiveLeader[1]] = LeaderScore[1];
+      PlayerScore[ObjectiveLeader[2]] = LeaderScore[2];
         
   String jsonString = JSON.stringify(board);
   events.send(jsonString.c_str(), "new_readings", millis());
@@ -578,7 +578,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 </head>
 <body>
   <div class="topnav">
-    <h1>JEDGE Host Controls</h1>
+    <h1>JBOX Settings</h1>
   </div>
   <div class="content">
     <div class="card">
@@ -603,7 +603,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         <option value="109">Respawn Station</option>
         <option value="110">Med Kit</option>
         <option value="111">Loot Box</option>
-        <option value="112">Armor Boost Cannon</option>
+        <option value="112">Armor Boost</option>
         <option value="113">Sheilds Boost</option>
         <option value="114">Own the Zone</option>
         <option value="115">Control Point Captured</option>
@@ -661,12 +661,14 @@ const char index_html[] PROGMEM = R"rawliteral(
         </select>
       </p>
       <h2>Gear Compatibility Selector</h2>
+      <h2>(comming soon...)</h2>
       <p><select name="ambience" id="ambienceid">
         <option value="601">BRX</option>
         <option value="602">LTTO</option>
         <option value="603">Recoil</option>
         </select>
       </p>
+      <p><button id="gameover" class="button">End Game</button></p>
       <p><button id="resetscores" class="button">Reset Scores</button></p>
     </div>
   </div>
@@ -776,9 +778,14 @@ if (!!window.EventSource) {
     document.getElementById('ambienceid').addEventListener('change', handleambience, false);
     document.getElementById('ammoid').addEventListener('change', handleammo, false);
     document.getElementById('resetscores').addEventListener('click', toggle14s);
+    document.getElementById('gameover').addEventListener('click', toggle14a);
+    
   }
   function toggle14s(){
     websocket.send('toggle14s');
+  }
+  function toggle14a(){
+    websocket.send('toggle14a');
   }
   function handleprimary() {
     var xa = document.getElementById("primaryid").value;
@@ -826,8 +833,12 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
   AwsFrameInfo *info = (AwsFrameInfo*)arg;
   if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
     data[len] = 0;
-    if (strcmp((char*)data, "toggle14s") == 0) { // game start
+    if (strcmp((char*)data, "toggle14s") == 0) { // game reset
       ResetScores();
+    }if (strcmp((char*)data, "toggle14a") == 0) { // game end
+      DOMINATIONCLOCK = false;
+      UpdateWebApp0();
+      UpdateWebApp2();
     }
     if (strcmp((char*)data, "1") == 0) {
       // default domination mode that provides both player scoring and team scoring
@@ -2792,7 +2803,6 @@ void loop1(void *pvParameters) {
           Serial.println("Run points accumulator for Players");
           AddPointToPlayerWithPossession();
           Serial.println("Enable Score Posting");
-          UPDATEWEBAPP = true;
         } 
       }
     }
@@ -2806,6 +2816,7 @@ void loop2(void *pvParameters) {
   Serial.print("cOMMS loop running on core ");
   Serial.println(xPortGetCoreID());
   while (1) { // starts the forever loopws.cleanupClients();
+    unsigned long currentMillis1 = millis(); // sets the timer for timed operations
     ws.cleanupClients();
     if (BROADCASTESPNOW) {
       BROADCASTESPNOW = false;
@@ -2814,18 +2825,11 @@ void loop2(void *pvParameters) {
       Serial.println("Sent Data Via ESPNOW");
       ResetReadings();
     }
-    if (UPDATEWEBAPP) {
-      if (WebAppUpdaterProcessCounter < 2) {
-        if (WebAppUpdaterProcessCounter == 0) {
-            UpdateWebApp0();
-        }
-        if (WebAppUpdaterProcessCounter == 1) {
-          UpdateWebApp2();
-        }
-        WebAppUpdaterProcessCounter++;
-      } else {
-        UPDATEWEBAPP = false;
-        WebAppUpdaterProcessCounter = 0;
+    if (BASICDOMINATION) {
+      if (currentMillis1 - PreviousMillis > 5000) {
+        PreviousMillis = currentMillis1;
+        UpdateWebApp0();
+        Serial.println("updated scores on web app");
       }
     }
     //**************************************************************************************
