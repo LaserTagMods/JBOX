@@ -27,103 +27,76 @@
  * 3/30/21    - Added Confirmation Tag when capturing a base
  *            = Added buzzer sound when activating a function
  *            - Cleaned up RGB Indicators a Bit for completed modes thus far
- * 
+ * 5/13/21    - Migrated everything to web server controls versus blynk and moved the lora to the comms loop 
  * 
 */
-
-/* Comment this out to disable prints and save space */
-#define BLYNK_PRINT Serial
-
-#define BLYNK_USE_DIRECT_CONNECT
 
 //*************************************************************************
 //********************* LIBRARY INCLUSIONS - ALL **************************
 //*************************************************************************
-#include <BlynkSimpleEsp32_BLE.h>
-#include <BLEDevice.h>
-#include <BLEServer.h>
-#include <HardwareSerial.h> // used for setting up the serial communications on non RX/TX pins
+// Import required libraries
 #include <WiFi.h>
-#include <esp_now.h>
+#include <AsyncTCP.h>
+#include <ESPAsyncWebServer.h>
+#include <esp_now.h> // espnow library
 #include <esp_wifi.h> // needed for resetting the mac address
+#include <Arduino_JSON.h>
+#include <HardwareSerial.h> // used for setting up the serial communications on non RX/TX pins
 
-//*************************************************************************
-//******************** DEVICE SPECIFIC DEFINITIONS ************************
-//*************************************************************************
-// These should be modified as applicable for your needs
-
-
-
-//*************************************************************************
-//********************* GLOBAL DEFINITIONS - ALL **************************
-//*************************************************************************
 // serial definitions for LoRa
 #define SERIAL1_RXPIN 19 // TO LORA TX
 #define SERIAL1_TXPIN 23 // TO LORA RX
 
 //*************************************************************************
-//********************** BLYNK VARIABLE DELCARATIONS *********************
+//******************** DEVICE SPECIFIC DEFINITIONS ************************
 //*************************************************************************
-// You should get Auth Token in the Blynk App.
-// Go to the Project Settings (nut icon).
-char auth[] = "xiocSUz0buA2fnC4Tp4uReneMb2yg5vt";
+// These should be modified as applicable for your needs
+int JBOXID = 1; // this is the gun or player ID, each esp32 needs a different one, set "0-63"
+int TaggersOwned = 64; // how many taggers do you own or will play?
+// Replace with your network credentials
+const char* ssid = "JBOX#01";
+const char* password = "123456789";
 
-// Trigger Variables
-bool RUNBLYNK = true;
-bool SETUPBLYNK = true;
-
-// Attach virtual serial terminal to Virtual Pin V100
-WidgetTerminal scoreterminal(V100);
-WidgetTerminal debugmonitor(V101);
 
 //*************************************************************************
-//********************** ESPNOW VARIABLE DELCARATIONS *********************
+//******************** VARIABLE DECLARATIONS ******************************
 //*************************************************************************
-// Global copy of slave
-// Trigger Variables
-bool RUNESPNOW = true;
-bool STARTESPNOW = true;
-bool BROADCASTESPNOW = false;
-bool ESPNOWDATASEND = false;
+int WebSocketData;
+bool ledState = 0;
+const int ledPin = 2;
+int Menu[25]; // used for menu settings storage
 
-// for resetting mac address to custom address:
-uint8_t newMACAddress[] = {0x32, 0xAE, 0xA4, 0x07, 0x0D, 0x09}; 
+int id = 0;
+//int tempteamscore;
+//int tempplayerscore;
+int teamscore[4];
+int playerscore[64];
+int pid = 0;
 
-// REPLACE WITH THE MAC Address of your receiver, this is the address we will be sending to
-uint8_t broadcastAddress[] = {0x32, 0xAE, 0xA4, 0x07, 0x0D, 0x09};
+// definitions for analyzing incoming brx serial data
+String readStr; // the incoming data is stored as this string
+char *ptr = NULL; // used for initializing and ending string break up.
 
-// Register peer
-esp_now_peer_info_t peerInfo;
+//variabls for blinking an LED with Millis
+const int led = 2; // ESP32 Pin to which onboard LED is connected
+unsigned long previousMillis = 0;  // will store last time LED was updated
+unsigned long ledpreviousMillis = 0;  // will store last time LED was updated
+const long ledinterval = 1500;  // interval at which to blink (milliseconds)
 
-// Define variables to store and to be sent
-String datapacket0;
-int datapacket1;
-int datapacket2;
-int datapacket3;
-
-// Define variables to store incoming readings
-String incomingData0;
-int incomingData1;
-int incomingData2;
-int incomingData3;
-
-// Variable to store if sending data was successful
-String success;
-
-//Structure example to send data
-//Must match the receiver structure
-typedef struct struct_message {
-  String function;
-  int DP1;
-  int DP2;
-  int DP3;
-} struct_message;
-
-// Create a struct_message called DataToBroadcast to hold sensor readings
-struct_message DataToBroadcast;
-
-// Create a struct_message to hold incoming sensor readings
-struct_message incomingReadings;
+bool SCORESYNC = false; // used for initializing score syncronization
+int ScoreRequestCounter = 0; // counter used for score syncronization
+String ScoreTokenStrings[73]; // used for disecting incoming score string/char
+int PlayerDeaths[64]; // used for score accumilation
+int PlayerKills[64]; // used for score accumilation
+int PlayerObjectives[64]; // used for score accumilation
+int TeamKills[4]; // used for score accumilation
+int TeamObjectives[4]; // used for score accumilation
+int TeamDeaths[4];
+String ScoreString = "0";
+long ScorePreviousMillis = 0;
+bool UPDATEWEBAPP = false; // used to update json scores to web app
+long WebAppUpdaterTimer = 0;
+int WebAppUpdaterProcessCounter = 0;
 
 // timer settings
 unsigned long CurrentMillis = 0;
@@ -132,8 +105,6 @@ long PreviousMillis = 0;
 int ESPNOWinterval = 20000;
 int ESPNOWPreviousMillis = 0;
 
-
-//*************************************************************************
 //*********************** LORA VARIABLE DELCARATIONS **********************
 //*************************************************************************
 String LoRaDataReceived; // string used to record data coming in
@@ -149,9 +120,7 @@ int receivecounter = 0;
 unsigned long lorapreviousMillis = 0;
 const long lorainterval = 3000;
 
-//*************************************************************************
-//**************** IR RECEIVER VARIABLE DELCARATIONS **********************
-//*************************************************************************
+// IR RECEIVER VARIABLE DELCARATIONS 
 // Define Variables used for the game functions
 int TeamID=0; // this is for team recognition, team 0 = red, team 1 = blue, team 2 = yellow, team 3 = green
 int gamestatus=0; // used to turn the ir reciever procedure on and off
@@ -174,9 +143,7 @@ int ZZ[2]; // parity bits depending on number of 1s in ir
 int XX[1]; // bit to used to confirm brx ir is received
 bool ENABLEIRRECEIVER = true; // enables and disables the ir receiver
 
-//*************************************************************************
-//**************** GAME VARIABLE DELCARATIONS ***************************
-//*************************************************************************
+// GAME VARIABLE DELCARATIONS
 // variables for gameplay and scoring:
 int Function = 1; // set as default for basic domination game mode
 int TeamScore[4]; // used to track team score
@@ -190,10 +157,9 @@ bool BASICDOMINATION = true; // a default game mode
 bool DOMINATIONCLOCK = false;
 bool POSTDOMINATIONSCORETOBLYNK = false;
 bool CAPTURABLEEMITTER = false;
+bool ANYTEAM = false;
 
-//*************************************************************************
-//**************** IR LED VARIABLE DELCARATIONS ***************************
-//*************************************************************************
+// IR LED VARIABLE DELCARATIONS
 int IRledPin =  26;    // LED connected to GPIO26
 int B[4];
 int P[6];
@@ -223,6 +189,7 @@ long CoolDownInterval = 0;
 
 // IR Protocols
 bool CONTROLPOINTLOST = true; // set as default for running basic domination game
+bool CONTROLPOINTCAPTURED = false; // set as default for running basic domination game
 bool MOTIONSENSOR = false;
 bool SWAPBRX = false;
 bool OWNTHEZONE = false;
@@ -240,18 +207,14 @@ bool ARMORBOOST = false;
 bool SHEILDS = false;
 
 
-//*************************************************************************
-//**************** CORE VARIABLE DELCARATIONS *****************************
-//*************************************************************************
+//  CORE VARIABLE DELCARATIONS
 unsigned long core0previousMillis = 0;
 const long core0interval = 1000;
 
 unsigned long core1previousMillis = 0;
 const long core1interval = 3000;
 
-//*************************************************************************
-//**************** RGB VARIABLE DELCARATIONS ******************************
-//*************************************************************************
+//  RGB VARIABLE DELCARATIONS
 int red = 17;
 int green = 21;
 int blue = 22;
@@ -272,9 +235,7 @@ unsigned long changergbpreviousMillis = 0;
 const long changergbinterval = 2000;
 bool RGBDEMOMODE = true; // enables rgb demo flashing and changing of colors
 
-//*************************************************************************
-//**************** PIEZO VARIABLE DELCARATIONS ****************************
-//*************************************************************************
+//PIEZO VARIABLE DELCARATIONS
 const int buzzer = 5; // buzzer pin
 bool BUZZ = false; // set to true to send buzzer sound
 bool SOUNDBUZZER = false; // set to true to sound buzzer
@@ -284,9 +245,53 @@ const int fixedbuzzerduration = buzzerduration; // assigns a constant buzzer dur
 unsigned long buzzerpreviousMillis = 0;
 const long buzzerinterval = 5000;
 
-//*************************************************************************
-//************************** ESPNOW OBJECTS********************************
-//*************************************************************************
+
+//*****************************************************************************************
+// ESP Now Objects:
+//*****************************************************************************************
+// for resetting mac address to custom address:
+uint8_t newMACAddress[] = {0x32, 0xAE, 0xA4, 0x07, 0x0D, 0x09}; 
+
+// REPLACE WITH THE MAC Address of your receiver, this is the address we will be sending to
+uint8_t broadcastAddress[] = {0x32, 0xAE, 0xA4, 0x07, 0x0D, 0x09};
+
+
+// Register peer
+esp_now_peer_info_t peerInfo;
+
+// Define variables to store and to be sent
+int datapacket1 = 99; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
+int datapacket2 = 32700; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
+int datapacket3 = JBOXID; // From - device ID
+String datapacket4 = "null"; // used for score reporting only
+
+
+// Define variables to store incoming readings
+int incomingData1; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases
+int incomingData2; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
+int incomingData3; // From - device ID
+String incomingData4; // used for score reporting only
+
+// Variable to store if sending data was successful
+String success;
+
+//Structure example to send data
+//Must match the receiver structure
+typedef struct struct_message {
+    int DP1; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
+    int DP2; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
+    int DP3; // From - device ID
+    char DP4[200]; // used for score reporting
+} struct_message;
+
+// Create a struct_message called DataToBroadcast to hold sensor readings
+struct_message DataToBroadcast;
+
+// Create a struct_message to hold incoming sensor readings
+struct_message incomingReadings;
+
+// trigger for activating data broadcast
+bool BROADCASTESPNOW = false; 
 
 // Callback when data is sent
 void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
@@ -298,39 +303,45 @@ void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
   else{
     success = "Delivery Fail :(";
   }
-  Serial.println();
 }
-
 // Callback when data is received
 void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
   memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
-  Serial.println();
-  Serial.println("*************** LORA DATA RECEIVED! *************");
+  //digitalWrite(2, HIGH);
   Serial.print("Bytes received: ");
   Serial.println(len);
-  incomingData0 = incomingReadings.function;
-  incomingData1 = incomingReadings.DP1;
-  incomingData2 = incomingReadings.DP2;
-  incomingData3 = incomingReadings.DP3;
-  Serial.println("function: " + incomingData0);
-  Serial.println("DP1: " + String(incomingData1));
-  Serial.println("DP2: " + String(incomingData2));
-  Serial.println("DP3: " + String(incomingData3));
-  digitalWrite(2, HIGH);
+  incomingData1 = incomingReadings.DP1; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
+  incomingData2 = incomingReadings.DP2; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
+  incomingData3 = incomingReadings.DP3; // From
+  //incomingData4 = incomingReadings.DP4; // From
+  Serial.println("DP1: " + String(incomingData1)); // INTENDED RECIPIENT
+  Serial.println("DP2: " + String(incomingData2)); // FUNCTION/COMMAN
+  Serial.println("DP3: " + String(incomingData3)); // From - device ID
+  Serial.print("DP4: "); // used for scoring
+  //Serial.println(incomingData4);
+  Serial.write(incomingReadings.DP4);
+  Serial.println();
+  incomingData4 = String(incomingReadings.DP4);
+  Serial.println(incomingData4);
+  ProcessIncomingCommands();
+  //Serial.print("cOMMS loop running on core ");
+  //Serial.println(xPortGetCoreID());
 }
 
 // object to generate random numbers to send
 void getReadings(){
-  datapacket0 = "random";
-  datapacket1 = random(3200);
-  datapacket2 = random(3200);
-  datapacket3 = random(3200);
-
   // Set values to send
-  DataToBroadcast.function = datapacket0;
   DataToBroadcast.DP1 = datapacket1;
   DataToBroadcast.DP2 = datapacket2;
   DataToBroadcast.DP3 = datapacket3;
+  datapacket4.toCharArray(DataToBroadcast.DP4, 200);
+}
+
+void ResetReadings() {
+  datapacket1 = 99; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
+  datapacket2 = 32700; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
+  datapacket3 = JBOXID; // From - device ID
+  datapacket4 = "null";
 }
 
 // object for broadcasting the data packets
@@ -344,56 +355,9 @@ void BroadcastData() {
   }
 }
 
-void initializeespnow() {
-  // Set up the onboard LED
-  pinMode(2, OUTPUT);
-  
-  // run the object for changing the esp default mac address
-  ChangeMACaddress();
-  
-  // Set device as a Wi-Fi Station
-  WiFi.mode(WIFI_STA);
-  Serial.println("station mode set");
-  
-  // Init ESP-NOW
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
-    return;
-  } else {
-    Serial.println("ESP-NOW initialized");
-  }
-  
-  // Once ESPNow is successfully Init, we will register for Send CB to
-  // get the status of Trasnmitted packet
-  esp_now_register_send_cb(OnDataSent); 
-  Serial.println("OnDataSent Registered"); 
-  
-  // Register peer
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0;   // this is the channel being used
-  peerInfo.encrypt = false;
-  Serial.println("Set Peer data");
-  
-  // Add peer        
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add peer");
-    Serial.println("Try Again");
-    vTaskDelay(2000);
-    initializeespnow();
-    //return;
-  } else {
-    Serial.println("Peer Added Properly");
-  }
-  
-  // Register for a callback function that will be called when data is received
-  esp_now_register_recv_cb(OnDataRecv);
-  Serial.println("OnDataRecv Registered");
-}
-
-
 // object to used to change esp default mac to custom mac
 void ChangeMACaddress() {
-  WiFi.mode(WIFI_STA);
+  //WiFi.mode(WIFI_STA);
   
   Serial.print("[OLD] ESP32 Board MAC Address:  ");
   Serial.println(WiFi.macAddress());
@@ -403,374 +367,891 @@ void ChangeMACaddress() {
   Serial.print("[NEW] ESP32 Board MAC Address:  ");
   Serial.println(WiFi.macAddress());
 }
- 
-//*************************************************************************
-//************************** BLYNK OBJECTS ********************************
-//*************************************************************************
-void initializeblynk() {
-  Serial.println("Waiting for connections...");
-  Blynk.setDeviceName("BASE1");
-  Blynk.begin(auth);
-  
-  // Clear the terminal content
-  scoreterminal.clear();
 
-  // This will print Blynk Software version to the Terminal Widget when
-  // your hardware gets connected to Blynk Server
-  scoreterminal.println("Blynk v" BLYNK_VERSION ": Device started");
-  scoreterminal.println("-------------");
-  scoreterminal.println("Type 'Marco' and get a reply, or type");
-  scoreterminal.println("anything else and get it printed back.");
-  scoreterminal.flush();
+void IntializeESPNOW() {
+    // Set up the onboard LED
+  pinMode(2, OUTPUT);
+  
+  // run the object for changing the esp default mac address
+  ChangeMACaddress();
+  
+  // Set device as a Wi-Fi Station
+  //WiFi.mode(WIFI_STA);
+  
+  // Init ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
+  }
+  
+  // Once ESPNow is successfully Init, we will register for Send CB to
+  // get the status of Trasnmitted packet
+  esp_now_register_send_cb(OnDataSent);  
+  
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;   // this is the channel being used
+  peerInfo.encrypt = false;
+  
+  // Add peer        
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add peer");
+    return;
+  }
+  
+  // Register for a callback function that will be called when data is received
+  esp_now_register_recv_cb(OnDataRecv);
 }
-// You can send commands from Terminal to your hardware. Just use
-// the same Virtual Pin as your Terminal Widget
-BLYNK_WRITE(V100) { // test debugmonitor
-  // if you type "Marco" into Terminal Widget - it will respond: "Polo:"
-  if (String("Marco") == param.asStr()) {
-    debugmonitor.println("You said: 'Marco'") ;
-    debugmonitor.println("I said: 'Polo'") ;
-  } else {
-    // Send it back
-    debugmonitor.print("You said:");
-    debugmonitor.write(param.getBuffer(), param.getLength());
-    debugmonitor.println();
+
+
+//****************************************************
+// WebServer 
+//****************************************************
+
+JSONVar board;
+
+// Create AsyncWebServer object on port 80
+AsyncWebServer server(80);
+AsyncWebSocket ws("/ws");
+AsyncEventSource events("/events");
+
+// callback function that will be executed when data is received
+void UpdateWebApp0() { 
+  id = 0; // team id place holder
+  pid = 0; // player id place holder
+  while (id < 4) {
+    board["temporaryteamobjectives"+String(id)] = TeamObjectives[id];
+    id++;
   }
-  // Ensure everything is sent
-  debugmonitor.flush();
+  String jsonString = JSON.stringify(board);
+  events.send(jsonString.c_str(), "new_readings", millis());
 }
-BLYNK_WRITE(V0) {// Options Menu
-  int b=param.asInt();
-  RGBDEMOMODE = false;
-  resetRGB();
-  if (b==1) { // Basic Domination Mode
-    // default domination mode that provides both player scoring and team scoring
-    // Scoring reports over BLE to paired mobile device and refreshes every time
-    // the score changes. To deactivate, select this option a second time to pause
-    // the game/score. Recommended as a standalone base use only. Each time base is
-    // shot, the team or player who shot takes posession and the base emitts a tag
-    // that notifies player that the base (control point) was captured.
-    Serial.println("Basic Domination Mode - Default!!!");
-    debugmonitor.println("Basic Domination Mode - Default!!!");
-    Function = 1;
-    RGBWHITE = true;
-    CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-    DOMINATIONCLOCK = false; // stops the game from going if already running
-    BASICDOMINATION = true; // enables this game mode
-    ResetAllIRProtocols(); // resets all ir protocols
-    CONTROLPOINTLOST = true; // enables control point captured call out
-    TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-    BASECONTINUOUSIRPULSE = false;
-    ENABLEIRRECEIVER = true;
-  }
-  if (b==2) { // Continuous IR Emitter Mode
-    // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
-    // Then activates a default interval spaced broadcast of a tag of choice.
-    // The tag of choice will need to be selected otherwise motion sensor is broadcasted.
-    // This is good for use as a respawn station that requires no button or trigger
-    // mechanism to activate. The default delay is two seconds but can be modified
-    // by another setting option in the application. Another use is a proximity detector or mine.
-    Serial.println("Continuous IR Emitter!!!");
-    debugmonitor.println("Continuous IR Emitter!!!");
-    Function = 2;
-    Team = 2;
-    RGBGREEN = true;
-    CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-    BASECONTINUOUSIRPULSE = true;
-    DOMINATIONCLOCK = false; // stops the game from going if already running
-    BASICDOMINATION = false; // enables this game mode
-    ResetAllIRProtocols(); // Resets all ir protocols
-    TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
-    ENABLEIRRECEIVER = false; // deactivates the ir receiver to avoid unnecessary processes
-  }
-  if (b==3) { // Tag Activated Ir Emitter
-    // Clears out any existing IR and Base Game Settings
-    // Sets Default for tag activation to send an IR emitter protocol for "motion sensor" as default
-    // 
-    Serial.println("Tage Activated IR Emitter!!!");
-    debugmonitor.println("Tage Activated IR Emitter!!!");
-    Function = 3;
-    Team = 2;
-    RGBWHITE = true;
-    CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-    BASECONTINUOUSIRPULSE = false;
-    DOMINATIONCLOCK = false; // stops the game from going if already running
-    BASICDOMINATION = false; // enables this game mode
-    CONTROLPOINTLOST = false; // enables control point captured call out
-    TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-    ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
-    ResetAllIRProtocols(); // resets all ir protocols
-    MOTIONSENSOR = true; // enables the alarm sound tag protocol    
-  }
-  if (b==4) { // Dual Mode - Continuous Emitter - Tag Capturable For Team Alignment
-    // Clears out existing settings
-    // Sets default Continuous Emitter Tag to Respwan Station As Default
-    // Creates A Counter for Capturability by Shots (default is 10, change default to desired count) 
-    // Enable IR Activated Capturability to switch team friendly setting to last captured    
-    // bases start out as default red team
-    // recommend doing a delay for respawn time to limit players ability to respawn right away on a base they may be guarding
-    Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
-    debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
-    Function = 4;
-    Team = 2; // sets all bases to default to red team
-    RGBWHITE = true;
-    BASECONTINUOUSIRPULSE = false;
-    DOMINATIONCLOCK = false; // stops the game from going if already running
-    BASICDOMINATION = false; // enables this game mode
-    CONTROLPOINTLOST = false; // enables control point captured call out
-    TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
-    ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
-    ResetAllIRProtocols(); // reset all ir protocols
-    RESPAWNSTATION = true; // enables the alarm sound tag protocol
-    CAPTURABLEEMITTER = true; // enables the team freindly to be toggled via IR  
-  }
-  debugmonitor.flush();
+void UpdateWebApp2() { 
+  // now we calculate and send leader board information
+      Serial.println("Game Highlights:");
+      Serial.println();
+      int ObjectiveLeader[3];
+      int LeaderScore[3];
+      // first Leader for Kills:
+      int kmax=0; 
+      int highest=0;
+      
+      // Now Leader for Objectives:
+      kmax=0; highest=0;
+      for (int k=0; k<64; k++)
+      if (PlayerObjectives[k] > highest) {
+        highest = PlayerObjectives[k];
+        kmax = k;
+      }
+      //  max now contains the largest kills value
+      // kmax contains the index to the largest kills value.
+      ObjectiveLeader[0] = kmax; // setting the slot 0 for the first place holder
+      LeaderScore[0] = highest; // setts the leader score as a temp stored data for now      
+      PlayerObjectives[kmax]=0; // resetting the first place leader's score
+      // we do it again for second place
+      kmax=0; highest=0; // starting over again but now the highest score is gone
+      for (int k=0; k<64; k++)
+      if (PlayerObjectives[k] > highest) {
+        highest = PlayerObjectives[k];
+        kmax = k;
+      }
+      //  max now contains the largest kills value
+      // kmax contains the index to the largest kills value.
+      ObjectiveLeader[1] = kmax; // setting the slot 1 for the second place holder
+      LeaderScore[1] = highest; // setts the leader score as a temp stored data for now      
+      PlayerObjectives[kmax]=0; // resetting the second place leader's score
+      // one final time for third place
+      kmax=0; highest=0; // starting over again but now the highest score is gone
+      for (int k=0; k<64; k++)
+      if (PlayerObjectives[k] > highest) {
+        highest = PlayerObjectives[k];
+        kmax = k;
+      }
+      //  max now contains the largest kills value
+      // kmax contains the index to the largest kills value.
+      ObjectiveLeader[2] = kmax; // setting the slot 2 for the first place holder
+      LeaderScore[2] = highest; // setts the third score as a temp stored data for now      
+      PlayerObjectives[kmax]=0; // resetting the first place leader's score
+      // now we send the updates to the blynk app
+      Serial.println("The Dominator, Players with the most objective points:");
+      Serial.println("1st place: Player " + String(ObjectiveLeader[0]) + " with " + String(LeaderScore[0]));
+      Serial.println("2nd place: Player " + String(ObjectiveLeader[1]) + " with " + String(LeaderScore[1]));
+      Serial.println("3rd place: Player " + String(ObjectiveLeader[2]) + " with " + String(LeaderScore[2]));
+      Serial.println();      
+      board["ObjectiveLeader0"] = ObjectiveLeader[0];
+      board["Leader0Objectives"] = LeaderScore[0];
+      board["ObjectiveLeader1"] = ObjectiveLeader[1];
+      board["Leader1Objectives"] = LeaderScore[1];
+      board["ObjectiveLeader2"] = ObjectiveLeader[2];
+      board["Leader2Objectives"] = LeaderScore[2];
+      // now get the player's scores back where they should be:
+      PlayerObjectives[ObjectiveLeader[0]] = LeaderScore[0];
+      PlayerObjectives[ObjectiveLeader[1]] = LeaderScore[1];
+      PlayerObjectives[ObjectiveLeader[2]] = LeaderScore[2];
+        
+  String jsonString = JSON.stringify(board);
+  events.send(jsonString.c_str(), "new_readings", millis());
 }
-BLYNK_WRITE(V1) { // set IR Protocol to be used
-  int b=param.asInt();
-  ResetAllIRProtocols();
-  if (b==1) {
-    MOTIONSENSOR = true;
-    Serial.println("Motion Sensor Enabled!!!");
-    debugmonitor.println("Motion Sensor Enabled!!!");
+
+const char index_html[] PROGMEM = R"rawliteral(
+<!DOCTYPE HTML><html>
+<head>
+  <title>ESP Web Server</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <style>
+  html {
+    font-family: Arial;
+    display: inline-block;
+    text-align: center;
   }
-  if (b==2) {
-    CAPTURETHEFLAG = true;
-    Serial.println("Capture the Flag Enabled!!!");
-    debugmonitor.println("Capture the Flag Enabled!!!");
+  p {  font-size: 1.2rem;}
+  h1 {
+    font-size: 1.8rem;
+    color: white;
   }
-  if (b==3) {
-    CONTROLPOINTLOST = true;
-    Serial.println("Control Point Captured Enabled!!!");
-    debugmonitor.println("Control Point Captured Enabled!!!");
+  h2{
+    font-size: 1.5rem;
+    font-weight: bold;
+    color: #143642;
   }
-  if (b==4) {
-    GASGRENADE = true;
-    Serial.println("Gas Grenade Enabled!!!");
-    debugmonitor.println("Gas Grenade Enabled!!!");
+  .topnav {
+    overflow: hidden;
+    background-color: #143642;
   }
-  if (b==5) {
-    LIGHTDAMAGE = true;
-    Serial.println("Light Damage Enabled!!!");
-    debugmonitor.println("Light Damage Enabled!!!");
+  body {
+    margin: 0;
   }
-  if (b==6) {
-    MEDIUMDAMAGE = true;
-    Serial.println("Medium Damage Enabled!!!");
-    debugmonitor.println("Medium Damage Enabled!!!");
+  .content {
+    padding: 30px;
+    max-width: 600px;
+    margin: 0 auto;
   }
-  if (b==7) {
-    HEAVYDAMAGE = true;
-    Serial.println("Heavy Damage Enabled!!!");
-    debugmonitor.println("Heavy Damage Enabled!!!");
+  .card {
+    background-color: #F8F7F9;;
+    box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);
+    padding-top:10px;
+    padding-bottom:20px;
   }
-  if (b==8) {
-    FRAG = true;
-    Serial.println("Explosive Damage Enabled!!!");
-    debugmonitor.println("Explosive Damage Enabled!!!");
+  .button {
+    padding: 15px 50px;
+    font-size: 24px;
+    text-align: center;
+    outline: none;
+    color: #fff;
+    background-color: #0f8b8d;
+    border: none;
+    border-radius: 5px;
+    -webkit-touch-callout: none;
+    -webkit-user-select: none;
+    -khtml-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: rgba(0,0,0,0);
+   }
+   /*.button:hover {background-color: #0f8b8d}*/
+   .button:active {
+     background-color: #0f8b8d;
+     box-shadow: 2 2px #CDCDCD;
+     transform: translateY(2px);
+   }
+   .state {
+     font-size: 1.5rem;
+     color:#8c8c8c;
+     font-weight: bold;
+   }
+   .stopnav { overflow: hidden; background-color: #2f4468; color: white; font-size: 1.7rem; }
+   .scontent { padding: 20px; }
+   .scard { background-color: white; box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5); }
+   .scards { max-width: 700px; margin: 0 auto; display: grid; grid-gap: 2rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+   .sreading { font-size: 2.8rem; }
+   .spacket { color: #bebebe; }
+   .scard.red { color: #FC0000; }
+   .scard.blue { color: #003DFC; }
+   .scard.yellow { color: #E5D200; }
+   .scard.green { color: #00D02C; }
+   .scard.black { color: #000000; }
+  </style>
+<title>JEDGE 3.0</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
+</head>
+<body>
+  <div class="topnav">
+    <h1>JEDGE Host Controls</h1>
+  </div>
+  <div class="content">
+    <div class="card">
+      <h2>Primary Function</h2>
+      <p><select name="primary" id="primaryid">
+        <option value="1">Basic Domination</option>
+        <option value="2">Continuous IR Emitter</option>
+        <option value="3">Tag Activated IR Emitter</option>
+        <option value="4">Capturable Continuous IR Emitter</option>
+        </select>
+      </p>
+      <h2>IR Emitter Type</h2>
+      <p><select name="secondary" id="secondaryid">
+        <option value="101">Motion Sensor</option>
+        <option value="102">Capture the Flag</option>
+        <option value="103">Control Point Lost</option>
+        <option value="104">Gas Grenade</option>
+        <option value="105">Light Damage</option>
+        <option value="106">Medium Damage</option>
+        <option value="107">Heavy Damage</option>
+        <option value="108">Explosive Damage</option>
+        <option value="109">Respawn Station</option>
+        <option value="110">Med Kit</option>
+        <option value="111">Loot Box</option>
+        <option value="112">Armor Boost Cannon</option>
+        <option value="113">Sheilds Boost</option>
+        <option value="114">Own the Zone</option>
+        <option value="115">Control Point Captured</option>
+        </select>
+      </p><h2>Team Friendly/Alignment Settings</h2>
+      <p><select name="ammo" id="ammoid">
+        <option value="201">Unspecified</option>
+        <option value="202">Red/Alpha</option>
+        <option value="203">Blue/Bravo</option>
+        <option value="204">Yellow/Charlie</option>
+        <option value="205">Green/Delta</option>
+        </select>
+      </p>
+      <h2>Continuous IR Emitter Frequency</h2>
+      <p><select name="MeleeSetting" id="meleesettingid">
+        <option value="301">1 Sec.</option>
+        <option value="302">2 Sec.</option>
+        <option value="303">3 Sec.</option>
+        <option value="304">5 Sec.</option>
+        <option value="305">10 Sec.</option>
+        <option value="306">15 Sec.</option>
+        <option value="307">30 Sec.</option>
+        <option value="308">60 Sec.</option>
+        </select>
+      </p>
+      <h2>Tag Activated IR Cool Down</h2>
+      <p><select name="playerlives" id="playerlivesid">
+        <option value="401">Off/NA</option>
+        <option value="402">5 Sec.</option>
+        <option value="403">10 Sec.</option>
+        <option value="404">15 Sec.</option>
+        <option value="405">30 Sec.</option>
+        <option value="406">60 Sec.</option>
+        <option value="407">2 Min.</option>
+        <option value="408">3 Min.</option>
+        <option value="409">5 Min.</option>
+        <option value="410">10 Min.</option>
+        <option value="411">15 Min.</option>
+        <option value="412">20 Min.</option>
+        <option value="413">30 Min.</option>
+        </select>
+      </p>
+      <h2>Capturabl IR Base Tag Count</h2>
+      <p><select name="gametime" id="gametimeid">
+        <option value="501">1 Shots</option>
+        <option value="502">10 Shots</option>
+        <option value="503">15 Shots</option>
+        <option value="504">30 Shots</option>
+        <option value="505">60 Shots</option>
+        <option value="506">100 Shots</option>
+        <option value="507">150 Shots</option>
+        <option value="508">300 Shots</option>
+        <option value="509">500 Shots</option>
+        <option value="510">1000 Shots</option>
+        </select>
+      </p>
+      <h2>Gear Compatibility Selector</h2>
+      <p><select name="ambience" id="ambienceid">
+        <option value="601">BRX</option>
+        <option value="602">LTTO</option>
+        <option value="603">Recoil</option>
+        </select>
+      </p>
+      <p><button id="resetscores" class="button">Reset Scores</button></p>
+    </div>
+  </div>
+  <div class="stopnav">
+    <h3>Score Reporting</h3>
+  </div>
+  <div class="scontent">
+    <div class="scards">
+      <div class="scard red">
+        <h4>Alpha Team</h4>
+        <p><span class="reading"> Points:<span id="to0"></span></p>
+      </div>
+      <div class="scard blue">
+        <h4>Bravo Team</h4><p>
+        <p><span class="reading"> Points:<span id="to1"></span></p>
+      </div>
+      <div class="scard yellow">
+        <h4>Charlie Team</h4>
+        <p><span class="reading"> Points:<span id="to2"></span></p>
+      </div>
+      <div class="scard green">
+        <h4>Delta Team</h4>
+        <p><span class="reading"> Points:<span id="to3"></span></p>
+      </div>
+    </div>
+  </div>
+  <div class="stopnav">
+    <h3>Game Highlights</h3>
+  </div>
+  <div class="scontent">
+    <div class="scards">
+      <div class="scard black">
+      <h2>Most Points</h2>
+        <p><span class="reading">Player <span id="MO0"></span><span class="reading"> : <span id="MO10"></span></p>
+        <p><span class="reading">Player <span id="MO1"></span><span class="reading"> : <span id="MO11"></span></p>
+        <p><span class="reading">Player <span id="MO2"></span><span class="reading"> : <span id="MO12"></span></p>
+      </div>
+    </div>
+  </div>
+  
+<script>
+if (!!window.EventSource) {
+ var source = new EventSource('/events');
+ 
+ source.addEventListener('open', function(e) {
+  console.log("Events Connected");
+ }, false);
+ source.addEventListener('error', function(e) {
+  if (e.target.readyState != EventSource.OPEN) {
+    console.log("Events Disconnected");
   }
-  if (b==9) {
-    RESPAWNSTATION = true;
-    Serial.println("Respawn Station Enabled!!!");
-    debugmonitor.println("Respawn Station Enabled!!!");
-  }
-  if (b==10) {
-    MEDKIT = true;
-    Serial.println("Medkit Enabled!!!");
-    debugmonitor.println("Medkit Enabled!!!");
-  }
-  if (b==11) {
-    LOOTBOX = true;
-    Serial.println("Loot Box Enabled!!!");
-    debugmonitor.println("Loot Box Enabled!!!");
-  }
-  if (b==12) {
-    ARMORBOOST = true;
-    Serial.println("Armor Boost Enabled!!!");
-    debugmonitor.println("Armor Boost Enabled!!!");
-  }
-  if (b==13) {
-    SHEILDS = true;
-    Serial.println("Sheilds Enabled!!!");
-    debugmonitor.println("Sheilds Enabled!!!");
-  }
-  if (b==14) {
-    OWNTHEZONE = true;
-    Serial.println("Own The Zone Enabled!!!");
-    debugmonitor.println("Own The Zone Enabled!!!");
-  }
-  debugmonitor.flush();
+ }, false);
+ 
+ source.addEventListener('message', function(e) {
+  console.log("message", e.data);
+ }, false);
+ 
+ source.addEventListener('new_readings', function(e) {
+  console.log("new_readings", e.data);
+  var obj = JSON.parse(e.data);
+  document.getElementById("to0").innerHTML = obj.temporaryteamobjectives0;
+  document.getElementById("to1").innerHTML = obj.temporaryteamobjectives1;
+  document.getElementById("to2").innerHTML = obj.temporaryteamobjectives2; 
+  document.getElementById("to3").innerHTML = obj.temporaryteamobjectives3;
+  
+  document.getElementById("MO0").innerHTML = obj.ObjectiveLeader0;
+  document.getElementById("MO10").innerHTML = obj.Leader0Objectives;
+  document.getElementById("MO1").innerHTML = obj.ObjectiveLeader1;
+  document.getElementById("MO11").innerHTML = obj.Leader1Objectives;
+  document.getElementById("MO2").innerHTML = obj.ObjectiveLeader2;
+  document.getElementById("MO12").innerHTML = obj.Leader2Objectives;
+
+ }, false);
 }
-BLYNK_WRITE(V2) { // Set Freindly Team
-  int b=param.asInt();
-  RGBDEMOMODE = false;
-  resetRGB();
-  if (b==1) {
-    Team = 2;
-    RGBYELLOW = true;
-    Serial.println("Team Set to Yellow!!!");
-    debugmonitor.println("Team Set to Yellow!!!");
+  var gateway = `ws://${window.location.hostname}/ws`;
+  var websocket;
+  window.addEventListener('load', onLoad);
+  function initWebSocket() {
+    console.log('Trying to open a WebSocket connection...');
+    websocket = new WebSocket(gateway);
+    websocket.onopen    = onOpen;
+    websocket.onclose   = onClose;
+    websocket.onmessage = onMessage; // <-- add this line
   }
-  if (b==2) {
-    Team = 0;
-    RGBRED = true;
-    Serial.println("Team Set to Red!!!");
-    debugmonitor.println("Team Set to Red!!!");
+  function onOpen(event) {
+    console.log('Connection opened');
   }
-  if (b==3) {
-    Team = 1;
-    RGBBLUE = true;
-    Serial.println("Team Set to Blue!!!");
-    debugmonitor.println("Team Set to Blue!!!");
+  function onClose(event) {
+    console.log('Connection closed');
+    setTimeout(initWebSocket, 2000);
   }
-  if (b==4) {
-    Team = 2;
-    RGBYELLOW = true;
-    Serial.println("Team Set to Yellow!!!");
-    debugmonitor.println("Team Set to Yellow!!!");
+  function onMessage(event) {
+    var state;
+    
   }
-  if (b==5) {
-    Team = 3;
-    RGBGREEN = true;
-    Serial.println("Team Set to Green!!!");
-    debugmonitor.println("Team Set to Green!!!");
+  
+  function onLoad(event) {
+    initWebSocket();
+    initButton();
   }
-  debugmonitor.flush();
+  function initButton() {
+    document.getElementById('primaryid').addEventListener('change', handleprimary, false);
+    document.getElementById('secondaryid').addEventListener('change', handlesecondary, false);
+    document.getElementById('meleesettingid').addEventListener('change', handlemelee, false);
+    document.getElementById('playerlivesid').addEventListener('change', handlelives, false);
+    document.getElementById('gametimeid').addEventListener('change', handlegametime, false);
+    document.getElementById('ambienceid').addEventListener('change', handleambience, false);
+    document.getElementById('ammoid').addEventListener('change', handleammo, false);
+    document.getElementById('resetscores').addEventListener('click', toggle14s);
+  }
+  function toggle14s(){
+    websocket.send('toggle14s');
+  }
+  function handleprimary() {
+    var xa = document.getElementById("primaryid").value;
+    websocket.send(xa);
+  }
+  function handlesecondary() {
+    var xb = document.getElementById("secondaryid").value;
+    websocket.send(xb);
+  }
+  function handlemelee() {
+    var xc = document.getElementById("meleesettingid").value;
+    websocket.send(xc);
+  }
+  function handlelives() {
+    var xe = document.getElementById("playerlivesid").value;
+    websocket.send(xe);
+  }
+  function handlegametime() {
+    var xf = document.getElementById("gametimeid").value;
+    websocket.send(xf);
+  }
+  function handleambience() {
+    var xg = document.getElementById("ambienceid").value;
+    websocket.send(xg);
+  }
+  function handleammo() {
+    var xl = document.getElementById("ammoid").value;
+    websocket.send(xl);
+  }
+
+
+</script>
+</body>
+</html>
+)rawliteral";
+
+void notifyClients() {
+  ws.textAll(String(ledState));
 }
-BLYNK_WRITE(V3) { // Adjust Continuous IR Tag frequency
-int b=param.asInt();
-  if (b==1) {
-    irledinterval = 1000;
-  }
-  if (b==2) {
-    irledinterval = 2000;
-  }
-  if (b==3) {
-    irledinterval = 3000;
-  }
-  if (b==4) {
-    irledinterval = 5000;
-  }
-  if (b==5) {
-    irledinterval = 10000;
-  }
-  if (b==6) {
-    irledinterval = 15000;
-  }
-  if (b==7) {
-    irledinterval = 30000;
-  }
-  if (b==8) {
-    irledinterval = 60000;
-  }
-  Serial.print("Tag Frequency Set to: ");
-  Serial.println(irledinterval);
-  debugmonitor.print("Tag Frequency Set to: ");
-  debugmonitor.println(irledinterval);
-  debugmonitor.flush();
+void notifyClients1() {
+  ws.textAll(String(WebSocketData));
 }
-BLYNK_WRITE(V4) { // Adjust/Applies a cool down to Tag Activated IR Emitter Mode
-int b=param.asInt();
-  if (b==1) {
-    TAGACTIVATEDIRCOOLDOWN = false;
-    Serial.println("Cool Down Deactivated");  
-    debugmonitor.println("Cool Down Deactivated");
-  } else {
-    if (b==2) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 5000; 
+
+void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
+  AwsFrameInfo *info = (AwsFrameInfo*)arg;
+  if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
+    data[len] = 0;
+    if (strcmp((char*)data, "toggle14s") == 0) { // game start
+      ResetScores();
     }
-    if (b==3) {
+    if (strcmp((char*)data, "1") == 0) {
+      // default domination mode that provides both player scoring and team scoring
+      // Scoring reports over BLE to paired mobile device and refreshes every time
+      // the score changes. To deactivate, select this option a second time to pause
+      // the game/score. Recommended as a standalone base use only. Each time base is
+      // shot, the team or player who shot takes posession and the base emitts a tag
+      // that notifies player that the base (control point) was captured.
+      Serial.println("Basic Domination Mode - Default!!!");
+      //debugmonitor.println("Basic Domination Mode - Default!!!");
+      Function = 1;
+      RGBWHITE = true;
+      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
+      DOMINATIONCLOCK = false; // stops the game from going if already running
+      BASICDOMINATION = true; // enables this game mode
+      ResetAllIRProtocols(); // resets all ir protocols
+      CONTROLPOINTCAPTURED = true; // enables control point captured call out
+      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
+      BASECONTINUOUSIRPULSE = false;
+      ENABLEIRRECEIVER = true;
+    }
+    if (strcmp((char*)data, "2") == 0) {
+      // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
+      // Then activates a default interval spaced broadcast of a tag of choice.
+      // The tag of choice will need to be selected otherwise motion sensor is broadcasted.
+      // This is good for use as a respawn station that requires no button or trigger
+      // mechanism to activate. The default delay is two seconds but can be modified
+      // by another setting option in the application. Another use is a proximity detector or mine.
+      Serial.println("Continuous IR Emitter!!!");
+      //debugmonitor.println("Continuous IR Emitter!!!");
+      Function = 2;
+      Team = 2;
+      RGBGREEN = true;
+      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
+      BASECONTINUOUSIRPULSE = true;
+      DOMINATIONCLOCK = false; // stops the game from going if already running
+      BASICDOMINATION = false; // enables this game mode
+      ResetAllIRProtocols(); // Resets all ir protocols
+      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
+      ENABLEIRRECEIVER = false; // deactivates the ir receiver to avoid unnecessary processes
+    }
+    if (strcmp((char*)data, "3") == 0) {
+      // Clears out any existing IR and Base Game Settings
+      // Sets Default for tag activation to send an IR emitter protocol for "motion sensor" as default
+      // 
+      Serial.println("Tage Activated IR Emitter!!!");
+      //debugmonitor.println("Tage Activated IR Emitter!!!");
+      Function = 3;
+      Team = 2;
+      RGBWHITE = true;
+      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
+      BASECONTINUOUSIRPULSE = false;
+      DOMINATIONCLOCK = false; // stops the game from going if already running
+      BASICDOMINATION = false; // enables this game mode
+      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
+      ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
+      ResetAllIRProtocols(); // resets all ir protocols
+      MOTIONSENSOR = true; // enables the alarm sound tag protocol 
+    }
+    if (strcmp((char*)data, "4") == 0) {
+      // Clears out existing settings
+      // Sets default Continuous Emitter Tag to Respwan Station As Default
+      // Creates A Counter for Capturability by Shots (default is 10, change default to desired count) 
+      // Enable IR Activated Capturability to switch team friendly setting to last captured    
+      // bases start out as default red team
+      // recommend doing a delay for respawn time to limit players ability to respawn right away on a base they may be guarding
+      Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
+      //debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
+      Function = 4;
+      Team = 2; // sets all bases to default to red team
+      RGBWHITE = true;
+      BASECONTINUOUSIRPULSE = false;
+      DOMINATIONCLOCK = false; // stops the game from going if already running
+      BASICDOMINATION = false; // enables this game mode
+      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
+      ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
+      ResetAllIRProtocols(); // reset all ir protocols
+      RESPAWNSTATION = true; // enables the alarm sound tag protocol
+      CAPTURABLEEMITTER = true; // enables the team freindly to be toggled via IR  
+    }
+    if (strcmp((char*)data, "101") == 0) {
+      MOTIONSENSOR = true;
+      Serial.println("Motion Sensor Enabled!!!");
+      //debugmonitor.println("Motion Sensor Enabled!!!");
+    }
+    if (strcmp((char*)data, "102") == 0) {
+      CAPTURETHEFLAG = true;
+      Serial.println("Capture the Flag Enabled!!!");
+      //debugmonitor.println("Capture the Flag Enabled!!!");
+    }
+    if (strcmp((char*)data, "103") == 0) {
+      CONTROLPOINTLOST = true;
+      Serial.println("Control Point Lost Enabled!!!");
+      //debugmonitor.println("Control Point Lost Enabled!!!");
+    }
+    if (strcmp((char*)data, "104") == 0) {
+      GASGRENADE = true;
+      Serial.println("Gas Grenade Enabled!!!");
+      //debugmonitor.println("Gas Grenade Enabled!!!");
+    }
+    if (strcmp((char*)data, "105") == 0) {
+      LIGHTDAMAGE = true;
+      Serial.println("Light Damage Enabled!!!");
+      //debugmonitor.println("Light Damage Enabled!!!");
+    }
+    if (strcmp((char*)data, "106") == 0) {
+      MEDIUMDAMAGE = true;
+      Serial.println("Medium Damage Enabled!!!");
+      //debugmonitor.println("Medium Damage Enabled!!!");
+    }
+    if (strcmp((char*)data, "107") == 0) {
+      HEAVYDAMAGE = true;
+      Serial.println("Heavy Damage Enabled!!!");
+      //debugmonitor.println("Heavy Damage Enabled!!!");
+    }
+    if (strcmp((char*)data, "108") == 0) {
+      FRAG = true;
+      Serial.println("Explosive Damage Enabled!!!");
+      //debugmonitor.println("Explosive Damage Enabled!!!");
+    }
+    if (strcmp((char*)data, "109") == 0) {
+      RESPAWNSTATION = true;
+      Serial.println("Respawn Station Enabled!!!");
+      //debugmonitor.println("Respawn Station Enabled!!!");
+    }
+    if (strcmp((char*)data, "110") == 0) {
+      MEDKIT = true;
+      Serial.println("Medkit Enabled!!!");
+      //debugmonitor.println("Medkit Enabled!!!");
+    }
+    if (strcmp((char*)data, "112") == 0) {
+      ARMORBOOST = true;
+      Serial.println("Armor Boost Enabled!!!");
+      //debugmonitor.println("Armor Boost Enabled!!!");
+    }
+    if (strcmp((char*)data, "113") == 0) {
+      SHEILDS = true;
+      Serial.println("Sheilds Enabled!!!");
+      //debugmonitor.println("Sheilds Enabled!!!");
+    }
+    if (strcmp((char*)data, "111") == 0) {
+      LOOTBOX = true;
+      Serial.println("Loot Box Enabled!!!");
+      //debugmonitor.println("Loot Box Enabled!!!");
+    }
+    if (strcmp((char*)data, "114") == 0) {
+      OWNTHEZONE = true;
+      Serial.println("Own The Zone Enabled!!!");
+      //debugmonitor.println("Own The Zone Enabled!!!");
+    }
+    if (strcmp((char*)data, "115") == 0) {
+      CONTROLPOINTCAPTURED = true;
+      Serial.println("Control Point Captured Enabled!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
+    }
+    if (strcmp((char*)data, "201") == 0) {
+      Team = 2;
+      RGBWHITE = true;
+      Serial.println("Team Set to Nuetral!!!");
+      // debugmonitor.println("Team Set to Nuetral!!!");
+      ANYTEAM = true;
+    }
+    if (strcmp((char*)data, "202") == 0) {
+      Team = 0;
+      RGBRED = true;
+      Serial.println("Team Set to Red!!!");
+      //debugmonitor.println("Team Set to Red!!!");
+      ANYTEAM = false;
+    }
+    if (strcmp((char*)data, "203") == 0) {
+      Team = 1;
+      RGBBLUE = true;
+      Serial.println("Team Set to Blue!!!");
+      //debugmonitor.println("Team Set to Red!!!");
+      ANYTEAM = false;
+    }
+    if (strcmp((char*)data, "204") == 0) {
+      Team = 2;
+      RGBYELLOW = true;
+      Serial.println("Team Set to Yellow!!!");
+      //debugmonitor.println("Team Set to Yellow!!!");
+    }
+    if (strcmp((char*)data, "205") == 0) {
+      Team = 3;
+      RGBGREEN = true;
+      Serial.println("Team Set to Green!!!");
+      //debugmonitor.println("Team Set to Green!!!");
+      ANYTEAM = false;
+    }
+    if (strcmp((char*)data, "301") == 0) {
+      irledinterval = 1000;
+      Serial.println(irledinterval);
+    }
+    if (strcmp((char*)data, "302") == 0) {
+      irledinterval = 2000;
+      Serial.println(irledinterval);
+    }
+    if (strcmp((char*)data, "303") == 0) {
+      irledinterval = 3000;
+      Serial.println(irledinterval);
+    }
+    if (strcmp((char*)data, "304") == 0) {
+      irledinterval = 5000;
+      Serial.println(irledinterval);
+    }
+    if (strcmp((char*)data, "305") == 0) {
+      irledinterval = 10000;
+      Serial.println(irledinterval);
+    }
+    if (strcmp((char*)data, "306") == 0) {
+      irledinterval = 15000;
+      Serial.println(irledinterval);
+    }
+    if (strcmp((char*)data, "307") == 0) {
+      irledinterval = 30000;
+      Serial.println(irledinterval);
+    }
+    if (strcmp((char*)data, "308") == 0) {
+      irledinterval = 60000;
+      Serial.println(irledinterval);
+    }
+    if (strcmp((char*)data, "401") == 0) {
+      TAGACTIVATEDIRCOOLDOWN = false;
+    Serial.println("Cool Down Deactivated");  
+    }
+    if (strcmp((char*)data, "402") == 0) {
+      TAGACTIVATEDIRCOOLDOWN = true;
+      CoolDownInterval = 5000;
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
+    }
+    if (strcmp((char*)data, "403") == 0) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 10000;
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
     }
-    if (b==4) {
+    if (strcmp((char*)data, "404") == 0) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 15000;
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
     }
-    if (b==5) {
+    if (strcmp((char*)data, "405") == 0) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 30000;
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
     }
-    if (b==6) {
+    if (strcmp((char*)data, "406") == 0) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 60000;
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
     }
-    if (b==7) {
+    if (strcmp((char*)data, "407") == 0) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 120000;
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
     }
-    if (b==8) {
+    if (strcmp((char*)data, "408") == 0) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 180000;
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
     }
-    if (b==9) {
+    if (strcmp((char*)data, "409") == 0) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 300000;
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
     }
-    if (b==10) {
+    if (strcmp((char*)data, "410") == 0) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 600000;
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
     }
-    if (b==11) {
+    if (strcmp((char*)data, "411") == 0) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 900000;
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
     }
-    if (b==12) {
+    if (strcmp((char*)data, "412") == 0) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 1200000;
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
     }
-    if (b==13) {
+    if (strcmp((char*)data, "413") == 0) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 1800000;
-    }  
-    Serial.println("Cool Down Activated"); 
-    Serial.print("Cool Down Timer Set to: ");
-    Serial.println(CoolDownInterval);
-    debugmonitor.println("Cool Down Activated"); 
-    debugmonitor.print("Cool Down Timer Set to: ");
-    debugmonitor.println(CoolDownInterval);
+      Serial.println("Cool Down Activated"); 
+      Serial.print("Cool Down Timer Set to: ");
+      Serial.println(CoolDownInterval);
+    }
+    if (strcmp((char*)data, "501") == 0) {
+      RequiredCapturableEmitterCounter = 1;
+      Serial.print("Required Capturable Emitter Counter Set to: ");
+      Serial.println(RequiredCapturableEmitterCounter);
+    }
+    if (strcmp((char*)data, "502") == 0) {
+      RequiredCapturableEmitterCounter = 10;
+      Serial.print("Required Capturable Emitter Counter Set to: ");
+      Serial.println(RequiredCapturableEmitterCounter);
+    }
+    if (strcmp((char*)data, "503") == 0) {
+      RequiredCapturableEmitterCounter = 15;
+      Serial.print("Required Capturable Emitter Counter Set to: ");
+      Serial.println(RequiredCapturableEmitterCounter);
+    }
+    if (strcmp((char*)data, "504") == 0) {
+      RequiredCapturableEmitterCounter = 30;
+      Serial.print("Required Capturable Emitter Counter Set to: ");
+      Serial.println(RequiredCapturableEmitterCounter);
+    }
+    if (strcmp((char*)data, "505") == 0) {
+      RequiredCapturableEmitterCounter = 60;
+      Serial.print("Required Capturable Emitter Counter Set to: ");
+      Serial.println(RequiredCapturableEmitterCounter);
+    }
+    if (strcmp((char*)data, "506") == 0) {
+      RequiredCapturableEmitterCounter = 100;
+      Serial.print("Required Capturable Emitter Counter Set to: ");
+      Serial.println(RequiredCapturableEmitterCounter);
+    }
+    if (strcmp((char*)data, "507") == 0) {
+      RequiredCapturableEmitterCounter = 150;
+      Serial.print("Required Capturable Emitter Counter Set to: ");
+      Serial.println(RequiredCapturableEmitterCounter);
+    }
+    if (strcmp((char*)data, "508") == 0) {
+      RequiredCapturableEmitterCounter = 300;
+      Serial.print("Required Capturable Emitter Counter Set to: ");
+      Serial.println(RequiredCapturableEmitterCounter);
+    }
+    if (strcmp((char*)data, "509") == 0) {
+      RequiredCapturableEmitterCounter = 500;
+      Serial.print("Required Capturable Emitter Counter Set to: ");
+      Serial.println(RequiredCapturableEmitterCounter);
+    }
+    if (strcmp((char*)data, "510") == 0) {
+      RequiredCapturableEmitterCounter = 1000;
+      Serial.print("Required Capturable Emitter Counter Set to: ");
+      Serial.println(RequiredCapturableEmitterCounter);
+    }
+    if (strcmp((char*)data, "601") == 0) {
+      Serial.println("BRX Mode");
+    }
+    if (strcmp((char*)data, "602") == 0) {
+      Serial.println("LTTO Mode");
+    }
+    if (strcmp((char*)data, "603") == 0) {
+      Serial.println("Recoil Mode");
+    }
   }
-  debugmonitor.flush();
 }
-BLYNK_WRITE(V5) { // Adjust Capturable IR Base Tag Counter
-  int b=param.asInt();
-  if (b==1) {
-    RequiredCapturableEmitterCounter = 1;
+
+void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
+             void *arg, uint8_t *data, size_t len) {
+  switch (type) {
+    case WS_EVT_CONNECT:
+      Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
+      break;
+    case WS_EVT_DISCONNECT:
+      Serial.printf("WebSocket client #%u disconnected\n", client->id());
+      break;
+    case WS_EVT_DATA:
+      handleWebSocketMessage(arg, data, len);
+      break;
+    case WS_EVT_PONG:
+    case WS_EVT_ERROR:
+      break;
   }
-  if (b==2) {
-    RequiredCapturableEmitterCounter = 10; // Default
-  }
-  if (b==3) {
-    RequiredCapturableEmitterCounter = 15;
-  }
-  if (b==4) {
-    RequiredCapturableEmitterCounter = 30;
-  }
-  if (b==5) {
-    RequiredCapturableEmitterCounter = 60;
-  }
-  if (b==6) {
-    RequiredCapturableEmitterCounter = 100;
-  }
-  if (b==7) {
-    RequiredCapturableEmitterCounter = 150;
-  }
-  if (b==8) {
-    RequiredCapturableEmitterCounter = 300;
-  }
-  if (b==9) {
-    RequiredCapturableEmitterCounter = 500;
-  }
-  if (b==10) {
-    RequiredCapturableEmitterCounter = 1000;
-  }
-  Serial.print("Required Capturable Emitter Counter Set to: ");
-  Serial.println(RequiredCapturableEmitterCounter);
-  debugmonitor.print("Required Capturable Emitter Counter Set to: ");
-  debugmonitor.println(RequiredCapturableEmitterCounter);
-  debugmonitor.flush();
 }
+
+void initWebSocket() {
+  ws.onEvent(onEvent);
+  server.addHandler(&ws);
+}
+String processor(const String& var){
+  Serial.println(var);
+  if(var == "STATE"){
+    if (ledState){
+      return "ON";
+    }
+    else{
+      return "OFF";
+    }
+  }
+}
+void ProcessIncomingCommands() { 
+  //Serial.print("cOMMS loop running on core ");
+  //Serial.println(xPortGetCoreID());
+  int IncomingTeam = 99;
+  if (incomingData1 > 199) {
+    IncomingTeam = incomingData1 - 200;
+  }
+  if (incomingData1 == JBOXID || incomingData1 == 99) { // data checked out to be intended for this player ID or for all players
+    digitalWrite(2, HIGH);
+    
+    if (incomingData2 < 1000 && incomingData2 > 900) { // Syncing scores
+      //int b = incomingData2 - 900;
+      //if (b == 2) { // this is an incoming score from a player!
+        //AccumulateIncomingScores();
+      //}
+    }
+  }
+  digitalWrite(2, LOW);
+}
+
 
 //*************************************************************************
 //*************************** LORA OBJECTS ********************************
@@ -861,6 +1342,146 @@ void TransmitLoRa() {
 }
 
 //*************************************************************************
+//*************************** RGB OBJECTS *********************************
+//*************************************************************************
+void resetRGB() {
+  Serial.println("Resetting RGBs");
+  RGBGREEN = false;
+  RGBOFF = false;
+  RGBRED = false;
+  RGBYELLOW = false;
+  RGBBLUE = false;
+  RGBPURPLE = false;
+  RGBCYAN = false;
+  RGBWHITE = false;
+}
+void AlignRGBWithTeam() {
+  resetRGB();
+  if (TeamID == 0) {
+    RGBRED = true;
+  }
+  if (TeamID == 1) {
+    RGBBLUE = true;
+  }
+  if (TeamID == 2) {
+    RGBYELLOW = true;
+  }
+  if (TeamID == 3) {
+    RGBGREEN = true;
+  }
+}
+void changergbcolor() {
+  int statuschange = 99;
+  if(RGBGREEN) {RGBGREEN = false; RGBWHITE = true; statuschange = 0;}
+  if(RGBRED) {RGBRED = false; RGBGREEN = true;}
+  if(RGBYELLOW) {RGBYELLOW = false; RGBRED = true;}
+  if(RGBBLUE) {RGBBLUE = false; RGBYELLOW = true;}
+  if(RGBPURPLE) {RGBPURPLE = false; RGBBLUE = true;}
+  if(RGBCYAN) {RGBCYAN = false; RGBPURPLE = true;}
+  if(RGBWHITE && statuschange == 99) {RGBWHITE = false; RGBCYAN = true;}
+}
+void rgbgreen(){
+    digitalWrite(red, LOW); // turn the LED on 
+    //digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
+    //digitalWrite(green, LOW); // turn the LED on 
+    digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
+    digitalWrite(blue, LOW); // turn the LED on
+    //digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW 
+}
+void rgbred(){
+    //digitalWrite(red, LOW); // turn the LED on 
+    digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
+    digitalWrite(green, LOW); // turn the LED on 
+    //digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
+    digitalWrite(blue, LOW); // turn the LED on
+    //digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
+}
+void rgbyellow(){
+    //digitalWrite(red, LOW); // turn the LED on 
+    digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
+    //digitalWrite(green, LOW); // turn the LED on 
+    digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
+    digitalWrite(blue, LOW); // turn the LED on
+    //digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
+}
+void rgbpurple(){
+    //digitalWrite(red, LOW); // turn the LED on 
+    digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
+    digitalWrite(green, LOW); // turn the LED on 
+    //digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
+    //digitalWrite(blue, LOW); // turn the LED on
+    digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
+}
+void rgbblue(){
+    digitalWrite(red, LOW); // turn the LED on 
+    //digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
+    digitalWrite(green, LOW); // turn the LED on 
+    //digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
+    //digitalWrite(blue, LOW); // turn the LED on
+    digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
+}
+void rgboff(){
+    digitalWrite(red, LOW); // turn the LED on 
+    //digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
+    digitalWrite(green, LOW); // turn the LED on 
+    //digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
+    digitalWrite(blue, LOW); // turn the LED on
+    //digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
+}
+void rgbcyan(){
+    digitalWrite(red, LOW); // turn the LED on 
+    //digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
+    //digitalWrite(green, LOW); // turn the LED on 
+    digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
+    //digitalWrite(blue, LOW); // turn the LED on
+    digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
+}
+void rgbwhite(){
+    //digitalWrite(red, LOW); // turn the LED on 
+    digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
+    //digitalWrite(green, LOW); // turn the LED on 
+    digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
+    //digitalWrite(blue, LOW); // turn the LED on
+    digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
+}
+void rgbblink() {
+  if (RGBState == LOW) {
+    RGBState = HIGH;
+    if(RGBGREEN) {
+      rgbgreen();
+      Serial.println("Blinking RGB");
+      }
+    if(RGBRED) {
+      rgbred();
+      Serial.println("Blinking RGB");
+      }
+    if(RGBYELLOW) {
+      rgbyellow();
+      Serial.println("Blinking RGB");
+      }
+    if(RGBBLUE) {
+      rgbblue();
+      Serial.println("Blinking RGB");
+      }
+    if(RGBPURPLE) {
+      rgbpurple();
+      Serial.println("Blinking RGB");
+      }
+    if(RGBCYAN) {
+      rgbcyan();
+      Serial.println("Blinking RGB");
+      }
+    if(RGBWHITE) {
+      rgbwhite();
+      Serial.println("Blinking RGB");
+      }
+  } else {
+    rgboff();
+    RGBState = LOW;
+  }
+}
+
+//*************************************************************************
 //************************ IR RECEIVER OBJECTS ****************************
 //*************************************************************************
 void PrintReceivedTag() {
@@ -892,6 +1513,18 @@ void PrintReceivedTag() {
   Serial.print("U1: "); Serial.println(UU[1]);
   Serial.print("Z0: "); Serial.println(ZZ[0]);
   Serial.print("Z1: "); Serial.println(ZZ[1]);
+}
+void PrintReceivedLTTOTag() {
+  // prints each individual bit on serial monitor
+  // typically not used but used for troubleshooting
+  Serial.println("TagReceived!!");
+  //Serial.print("LTTOT0: "); Serial.println(LTTOT0[0]);
+  //Serial.print("LTTOT1: "); Serial.println(LTTOT1[1]);
+  //Serial.print("LTTOP0: "); Serial.println(LTTOP0[2]);
+  //Serial.print("LTTOP1: "); Serial.println(LTTOP1[3]);
+  //Serial.print("LTTOP2: "); Serial.println(LTTOP2[0]);
+  //Serial.print("LTTOM0: "); Serial.println(LTTOM0[1]);
+  //Serial.print("LTTOM1: "); Serial.println(LTTOM1[2]);
 }
 // this procedure breaksdown each Weapon bit of the brx ir signal recieved and assigns the applicable bit value then adds them together to identify the player ID (1-64)
 void IDDamage() {
@@ -939,9 +1572,7 @@ void IDDamage() {
       // ID Damage by summing assigned values above based upon protocol values (1-64)
       DamageID=DID[0]+DID[1]+DID[2]+DID[3]+DID[4]+DID[6]+DID[7]+DID[5];
       Serial.print("Damage ID = ");
-      Serial.println(DamageID); 
-      debugmonitor.print("Damage ID = ");
-      debugmonitor.println(DamageID);      
+      Serial.println(DamageID);     
 }
 // this procedure breaksdown each bullet bit of the brx ir signal recieved and assigns the applicable bit value then adds them together to identify the player ID (1-64)
 void IDShot() {
@@ -969,9 +1600,7 @@ void IDShot() {
       // ID Player by summing assigned values above based upon protocol values (1-64)
       ShotType=BID[0]+BID[1]+BID[2]+BID[3];
       Serial.print("Shot Type = ");
-      Serial.println(ShotType); 
-      debugmonitor.print("Shot Type = ");
-      debugmonitor.println(ShotType);      
+      Serial.println(ShotType);      
 }
 // this procedure breaksdown each player bit of the brx ir signal recieved and assigns the applicable bit value then adds them together to identify the player ID (1-64)
 void IDplayer() {
@@ -1010,9 +1639,15 @@ void IDplayer() {
       // ID Player by summing assigned values above based upon protocol values (1-64)
       PlayerID=PID[0]+PID[1]+PID[2]+PID[3]+PID[4]+PID[5];
       Serial.print("Player ID = ");
-      Serial.println(PlayerID);
-      debugmonitor.print("Player ID = ");
-      debugmonitor.println(PlayerID);      
+      Serial.println(PlayerID);      
+}
+void BasicDomination() {
+  RGBDEMOMODE = false;
+  AlignRGBWithTeam();
+  BUZZ = true;
+  if (!DOMINATIONCLOCK) {
+    DOMINATIONCLOCK = true;
+  }
 }
 void teamID() {
       // check if the IR is from Red team
@@ -1021,8 +1656,6 @@ void teamID() {
       TeamID = 0;
       Serial.print("team = Red = ");
       Serial.println(TeamID);
-      debugmonitor.print("team = Red = ");
-      debugmonitor.println(TeamID);
       }
       // check if the IR is from blue team 
       if (TT[0] < 750 && TT[1] > 750) {
@@ -1030,8 +1663,6 @@ void teamID() {
       TeamID = 1;
       Serial.print("team = Blue = ");
       Serial.println(TeamID);
-      debugmonitor.print("team = Blue = ");
-      debugmonitor.println(TeamID);
       }
       // check if the IR is from green team 
       if (TT[0] > 750 && TT[1] > 750) {
@@ -1039,16 +1670,12 @@ void teamID() {
       TeamID = 3;
       Serial.print("team = Green = ");
       Serial.println(TeamID);
-      debugmonitor.print("team = Green = ");
-      debugmonitor.println(TeamID);
       }
       if (TT[0] > 750 && TT[1] < 750) {
       // sets the current team as red
       TeamID = 2;
       Serial.print("team = Yellow = ");
       Serial.println(TeamID);
-      debugmonitor.print("team = Yellow = ");
-      debugmonitor.println(TeamID);
       }
 }
 void IDPower() {
@@ -1057,13 +1684,38 @@ void IDPower() {
   if (UU[0] > 750 & UU[1] < 750) {PowerID = 2;}
   if (UU[0] > 750 & UU[1] > 750) {PowerID = 3;}
   Serial.println("Power = "+String(PowerID));
-  debugmonitor.println("Power = "+String(PowerID));
 }
 void IDCritical() {
   if (CC[0] < 750) {CriticalID = 0;}
   else {CriticalID = 1;}
   Serial.println("Criical = "+String(CriticalID));
-  debugmonitor.println("Criical = "+String(CriticalID));
+}
+void ChangeBaseAlignment() {
+  if (TeamID != Team) { // checks to see if tag hitting base is unfriendly or friendly
+    CapturableEmitterScore[TeamID]++; // add one point to the team that shot the base
+    if (CapturableEmitterScore[TeamID] >= RequiredCapturableEmitterCounter) { // check if the team scored enough points/shots to capture base
+      Team = TeamID; // sets the ir protocol used for the respawn ir tag
+      // resetting all team capture points
+      CapturableEmitterScore[0] = 0;
+      CapturableEmitterScore[1] = 0;
+      CapturableEmitterScore[2] = 0;
+      CapturableEmitterScore[3] = 0;
+      AlignRGBWithTeam(); // sets team RGB to new friendly team
+      BASECONTINUOUSIRPULSE = true;
+      ResetAllIRProtocols();
+      SINGLEIRPULSE = true; // allows for a one time pulse of an IR
+      CONTROLPOINTCAPTURED = true;
+      BUZZ = true;
+    } else { // if team tagging base did not meet minimum to control base
+      int tempscore = CapturableEmitterScore[TeamID]; // temporarily stores the teams score that just shot the base
+      // resets all scores
+      CapturableEmitterScore[0] = 0;
+      CapturableEmitterScore[1] = 0;
+      CapturableEmitterScore[2] = 0;
+      CapturableEmitterScore[3] = 0;
+      CapturableEmitterScore[TeamID] = tempscore; // resaves the temporarily stored score over the team's score that just shot the base, just easier than a bunch of if statements
+    }
+  }
 }
 // This procedure uses the preset IR_Sensor_Pin to determine if an ir received is BRX, if so it records the protocol received
 void receiveBRXir() {
@@ -1114,7 +1766,6 @@ void receiveBRXir() {
         IDDamage();
         IDPower();
         IDCritical();
-        debugmonitor.flush();
         if (CAPTURABLEEMITTER) {
           ChangeBaseAlignment();
         }
@@ -1124,6 +1775,9 @@ void receiveBRXir() {
         if (TAGACTIVATEDIR) {
           if (TAGACTIVATEDIRCOOLDOWN) {
             TAGACTIVATEDIR = false;
+            if (ANYTEAM) {
+              Team = TeamID;
+            }
             CoolDownStart = millis();
             resetRGB();
             RGBRED = true;
@@ -1143,7 +1797,6 @@ void receiveBRXir() {
       //Serial.println("Incorrect Sync Bits from Protocol, not BRX");
     }
 }
-
 //*************************************************************************
 //************************** IR LED OBJECTS *******************************
 //*************************************************************************
@@ -1321,6 +1974,10 @@ void SwapBRX() {
   Critical = 0;
   Power = 1;
   SetIRProtocol();
+  datapacket1 = PlayerID;
+  datapacket2 = 31000;
+  datapacket3 = 99;
+  BROADCASTESPNOW = true;
 }
 void MotionSensor() {
   BulletType = 15;
@@ -1339,6 +1996,23 @@ void ControlPointLost() {
   if (Player == PlayerID) {
     Player = random(63);
   }
+  if (TeamID == 2) {
+    Team = 0;
+  } else {
+    Team = 2;
+  }
+  Damage = 50;
+  Critical = 0;
+  Power = 0;
+  SetIRProtocol();
+}
+void ControlPointCaptured() {
+  BulletType = 15;
+  Player = 0;
+  if (Player == PlayerID) {
+    Player = random(64);
+  }
+  Team = TeamID;
   Damage = 50;
   Critical = 0;
   Power = 0;
@@ -1389,55 +2063,7 @@ void HitTag() {
   Power = 0;
   SetIRProtocol();
 }
-void VerifyCurrentIRTagSelection() {
-  if (CAPTURETHEFLAG) {
-    CaptureTheFlag(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (GASGRENADE) {
-    GasGrenade(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (LIGHTDAMAGE) {
-    LightDamage(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (MEDIUMDAMAGE) {
-    MediumDamage(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (HEAVYDAMAGE) {
-    HeavyDamage(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (FRAG) {
-    Frag(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (RESPAWNSTATION) {
-    RespawnStation(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (MEDKIT) {
-    MedKit(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (LOOTBOX) {
-    SwapBRX(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (ARMORBOOST) {
-    ArmorBoost(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (SHEILDS) {
-    Sheilds(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (CONTROLPOINTLOST) {
-    ControlPointLost();
-  }
-  if (OWNTHEZONE) {
-    OwnTheZone();
-  }
-  
-  if (HITTAG) {
-    HitTag();
-  }
-  if (MOTIONSENSOR) {
-    MotionSensor();
-  }
-  BUZZ = true;
-}
+
 void SetIRProtocol() {
 // Set Player ID
 if (Player==0) {P[0]=500; P[1]=500; P[2]=500; P[3]=500; P[4]=500; P[5]=500;}
@@ -1933,9 +2559,64 @@ void paritycheck() {
   Serial.println(Z[0]);
   Serial.println(Z[1]);
 }
+
+
+void VerifyCurrentIRTagSelection() {
+  if (CAPTURETHEFLAG) {
+    CaptureTheFlag(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (GASGRENADE) {
+    GasGrenade(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (LIGHTDAMAGE) {
+    LightDamage(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (MEDIUMDAMAGE) {
+    MediumDamage(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (HEAVYDAMAGE) {
+    HeavyDamage(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (FRAG) {
+    Frag(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (RESPAWNSTATION) {
+    RespawnStation(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (MEDKIT) {
+    MedKit(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (LOOTBOX) {
+    SwapBRX(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (ARMORBOOST) {
+    ArmorBoost(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (SHEILDS) {
+    Sheilds(); // sets ir protocol to motion sensor yellow and sends it
+  }
+  if (CONTROLPOINTLOST) {
+    ControlPointLost();
+  }
+  if (CONTROLPOINTCAPTURED) {
+    ControlPointCaptured();
+  }
+  if (OWNTHEZONE) {
+    OwnTheZone();
+  }
+  
+  if (HITTAG) {
+    HitTag();
+  }
+  if (MOTIONSENSOR) {
+    MotionSensor();
+  }
+  BUZZ = true;
+}
 void ResetAllIRProtocols() {
   MOTIONSENSOR = false;
   CONTROLPOINTLOST = false;
+  CONTROLPOINTCAPTURED = false;
   SWAPBRX = false;
   OWNTHEZONE = false;
   HITTAG = false;
@@ -1952,169 +2633,6 @@ void ResetAllIRProtocols() {
   SHEILDS = false;
 }
 
-
-//*************************************************************************
-//*************************** RGB OBJECTS *********************************
-//*************************************************************************
-void resetRGB() {
-  Serial.println("Resetting RGBs");
-  RGBGREEN = false;
-  RGBOFF = false;
-  RGBRED = false;
-  RGBYELLOW = false;
-  RGBBLUE = false;
-  RGBPURPLE = false;
-  RGBCYAN = false;
-  RGBWHITE = false;
-}
-void AlignRGBWithTeam() {
-  resetRGB();
-  if (TeamID == 0) {
-    RGBRED = true;
-  }
-  if (TeamID == 1) {
-    RGBBLUE = true;
-  }
-  if (TeamID == 2) {
-    RGBYELLOW = true;
-  }
-  if (TeamID == 3) {
-    RGBGREEN = true;
-  }
-}
-void changergbcolor() {
-  int statuschange = 99;
-  if(RGBGREEN) {RGBGREEN = false; RGBWHITE = true; statuschange = 0;}
-  if(RGBRED) {RGBRED = false; RGBGREEN = true;}
-  if(RGBYELLOW) {RGBYELLOW = false; RGBRED = true;}
-  if(RGBBLUE) {RGBBLUE = false; RGBYELLOW = true;}
-  if(RGBPURPLE) {RGBPURPLE = false; RGBBLUE = true;}
-  if(RGBCYAN) {RGBCYAN = false; RGBPURPLE = true;}
-  if(RGBWHITE && statuschange == 99) {RGBWHITE = false; RGBCYAN = true;}
-}
-void rgbgreen(){
-    digitalWrite(red, LOW); // turn the LED on 
-    //digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
-    //digitalWrite(green, LOW); // turn the LED on 
-    digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
-    digitalWrite(blue, LOW); // turn the LED on
-    //digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW 
-}
-void rgbred(){
-    //digitalWrite(red, LOW); // turn the LED on 
-    digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
-    digitalWrite(green, LOW); // turn the LED on 
-    //digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
-    digitalWrite(blue, LOW); // turn the LED on
-    //digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
-}
-void rgbyellow(){
-    //digitalWrite(red, LOW); // turn the LED on 
-    digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
-    //digitalWrite(green, LOW); // turn the LED on 
-    digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
-    digitalWrite(blue, LOW); // turn the LED on
-    //digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
-}
-void rgbpurple(){
-    //digitalWrite(red, LOW); // turn the LED on 
-    digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
-    digitalWrite(green, LOW); // turn the LED on 
-    //digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
-    //digitalWrite(blue, LOW); // turn the LED on
-    digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
-}
-void rgbblue(){
-    digitalWrite(red, LOW); // turn the LED on 
-    //digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
-    digitalWrite(green, LOW); // turn the LED on 
-    //digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
-    //digitalWrite(blue, LOW); // turn the LED on
-    digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
-}
-void rgboff(){
-    digitalWrite(red, LOW); // turn the LED on 
-    //digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
-    digitalWrite(green, LOW); // turn the LED on 
-    //digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
-    digitalWrite(blue, LOW); // turn the LED on
-    //digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
-}
-void rgbcyan(){
-    digitalWrite(red, LOW); // turn the LED on 
-    //digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
-    //digitalWrite(green, LOW); // turn the LED on 
-    digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
-    //digitalWrite(blue, LOW); // turn the LED on
-    digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
-}
-void rgbwhite(){
-    //digitalWrite(red, LOW); // turn the LED on 
-    digitalWrite(red, HIGH); // turn the LED off by making the voltage LOW
-    //digitalWrite(green, LOW); // turn the LED on 
-    digitalWrite(green, HIGH); // turn the LED off by making the voltage LOW
-    //digitalWrite(blue, LOW); // turn the LED on
-    digitalWrite(blue, HIGH); // turn the LED off by making the voltage LOW
-}
-//
-// utility function for digital clock display:
-// prints preceding colon and leading 0
-//
-void printDigits(int digits) {
-  Serial.print(":");
-  if(digits < 10)
-    Serial.print('0');
-    Serial.print(digits);
-}
-// print current arduino "uptime" on the serial port
-void DigitalClockDisplay() {
-  int h,m,s;
-  s = millis() / 1000;
-  m = s / 60;
-  h = s / 3600;
-  s = s - m * 60;
-  m = m - h * 60;
-  Serial.print(h);
-  printDigits(m);
-  printDigits(s);
-  Serial.println();
-}
-void rgbblink() {
-  if (RGBState == LOW) {
-    RGBState = HIGH;
-    if(RGBGREEN) {
-      rgbgreen();
-      Serial.println("Blinking RGB");
-      }
-    if(RGBRED) {
-      rgbred();
-      Serial.println("Blinking RGB");
-      }
-    if(RGBYELLOW) {
-      rgbyellow();
-      Serial.println("Blinking RGB");
-      }
-    if(RGBBLUE) {
-      rgbblue();
-      Serial.println("Blinking RGB");
-      }
-    if(RGBPURPLE) {
-      rgbpurple();
-      Serial.println("Blinking RGB");
-      }
-    if(RGBCYAN) {
-      rgbcyan();
-      Serial.println("Blinking RGB");
-      }
-    if(RGBWHITE) {
-      rgbwhite();
-      Serial.println("Blinking RGB");
-      }
-  } else {
-    rgboff();
-    RGBState = LOW;
-  }
-}
 //*************************************************************************
 //************************** PIEZO BUZZER OBJECTS *************************
 //*************************************************************************
@@ -2134,117 +2652,81 @@ void buzz() {
 //*************************************************************************
 //**************************** GAME PLAY OBJECTS **************************
 //*************************************************************************
-void ChangeBaseAlignment() {
-  if (TeamID != Team) { // checks to see if tag hitting base is unfriendly or friendly
-    CapturableEmitterScore[TeamID]++; // add one point to the team that shot the base
-    if (CapturableEmitterScore[TeamID] >= RequiredCapturableEmitterCounter) { // check if the team scored enough points/shots to capture base
-      Team = TeamID; // sets the ir protocol used for the respawn ir tag
-      // resetting all team capture points
-      CapturableEmitterScore[0] = 0;
-      CapturableEmitterScore[1] = 0;
-      CapturableEmitterScore[2] = 0;
-      CapturableEmitterScore[3] = 0;
-      AlignRGBWithTeam(); // sets team RGB to new friendly team
-      BASECONTINUOUSIRPULSE = true;
-      ResetAllIRProtocols();
-      SINGLEIRPULSE = true; // allows for a one time pulse of an IR
-      CONTROLPOINTLOST = true;
-      BUZZ = true;
-    } else { // if team tagging base did not meet minimum to control base
-      int tempscore = CapturableEmitterScore[TeamID]; // temporarily stores the teams score that just shot the base
-      // resets all scores
-      CapturableEmitterScore[0] = 0;
-      CapturableEmitterScore[1] = 0;
-      CapturableEmitterScore[2] = 0;
-      CapturableEmitterScore[3] = 0;
-      CapturableEmitterScore[TeamID] = tempscore; // resaves the temporarily stored score over the team's score that just shot the base, just easier than a bunch of if statements
-    }
-  }
-}
-void BasicDomination() {
-  RGBDEMOMODE = false;
-  AlignRGBWithTeam();
-  BUZZ = true;
-  if (!DOMINATIONCLOCK) {
-    DOMINATIONCLOCK = true;
-  }
-}
+
+
 void AddPointToTeamWithPossession() {
   TeamScore[TeamID]++;
 }
 void AddPointToPlayerWithPossession() {
   PlayerScore[PlayerID]++;
 }
+void ResetScores() {
+  int playercounter = 0;
+  int teamcounter = 0;
+  while (playercounter < 64) {
+    PlayerScore[playercounter] = 0;
+    playercounter++;
+    delay(1);
+  }
+  while (teamcounter < 4) {
+    TeamScore[teamcounter] = 0;
+    teamcounter++;
+  }
+  Serial.println("All scores reset");
+}
 void PostDominationScore() {
   // Clear the scoreterminal content
-  scoreterminal.clear();
   // This will print score updates to Terminal Widget when
   // your hardware gets connected to Blynk Server
-  scoreterminal.println("*******************************");
   Serial.println("*******************************");
-  scoreterminal.println("Domination Score Updated!");
   Serial.println("Domination Score Updated!");
-  scoreterminal.println("*******************************");
   Serial.println("*******************************");
   int teamcounter = 0;
   while (teamcounter < 4) {
     //Serial.println(teamcounter);
     if (TeamScore[teamcounter] > 0) {
       if (teamcounter == 0) {
-        scoreterminal.print("Red Team Score: ");
         Serial.print("Red Team Score: ");
-        scoreterminal.println(TeamScore[teamcounter]);
         Serial.println(TeamScore[teamcounter]);
       }
       if (teamcounter == 1) {
-        scoreterminal.print("Blue Team Score: ");
         Serial.print("Blue Team Score: ");
-        scoreterminal.println(TeamScore[teamcounter]);
         Serial.println(TeamScore[teamcounter]);
       }
       if (teamcounter == 2) {
-        scoreterminal.print("Yellow Team Score: ");
         Serial.print("Yellow Team Score: ");
-        scoreterminal.println(TeamScore[teamcounter]);
         Serial.println(TeamScore[teamcounter]);
       }
       if (teamcounter == 3) {
-        scoreterminal.print("Green Team Score: ");
         Serial.print("Green Team Score: ");
-        scoreterminal.println(TeamScore[teamcounter]);
         Serial.println(TeamScore[teamcounter]);
       }
     }
     teamcounter++;
     vTaskDelay(0);
   }
-  scoreterminal.println("");
   int playercounter = 0;
   while (playercounter < 64) {
     //Serial.println(playercounter);
     if (PlayerScore[playercounter] > 0) {
-      scoreterminal.print("Player ");
       Serial.print("Player ");
-      scoreterminal.print(playercounter);
       Serial.print(playercounter);
-      scoreterminal.print(" Score: ");
       Serial.print(" Score: ");
-      scoreterminal.println(PlayerScore[playercounter]);
       Serial.println(PlayerScore[playercounter]);
     }
     playercounter++;
     vTaskDelay(0);
   }
-  scoreterminal.flush();
 }
 
 //******************************************************************************************
-// **********************************  CORE 0 LOOP  ****************************************
+// ***********************************  GAME LOOP  ****************************************
 // *****************************************************************************************
 void loop1(void *pvParameters) {
-  Serial.print("loop running on core ");
+  Serial.print("GAME loop running on core ");
   Serial.println(xPortGetCoreID());   
   while(1) { // starts the forever loop
+    // put all the serial activities in here for communication with the brx
     unsigned long currentMillis0 = millis(); // sets the timer for timed operations
     //**************************************************************************************
     // RGB main functions: 
@@ -2271,7 +2753,6 @@ void loop1(void *pvParameters) {
         irledpreviousMillis = currentMillis0;
         VerifyCurrentIRTagSelection(); // runs object for identifying set ir protocol and send it
         Serial.println("Executed Base Continuous IR Pulse Object");
-        debugmonitor.println("Executed Base Continuous IR Pulse Object");
       }
     }
     // else {Serial.println("base continuous IR disabled");}
@@ -2292,15 +2773,6 @@ void loop1(void *pvParameters) {
         }
       }
     }
-    //**************************************************************************************
-    // LoRa Receiver Main Functions:
-    if (LORALISTEN) {
-       ReceiveTransmission();
-    }
-    if (ENABLELORATRANSMIT) {
-      TransmitLoRa();
-      ENABLELORATRANSMIT = false;
-    }
     //**********************************************************************
     // Piezo Buzzer main functions:
     if (BUZZ) {
@@ -2320,7 +2792,7 @@ void loop1(void *pvParameters) {
           Serial.println("Run points accumulator for Players");
           AddPointToPlayerWithPossession();
           Serial.println("Enable Score Posting");
-          POSTDOMINATIONSCORETOBLYNK = true;
+          UPDATEWEBAPP = true;
         } 
       }
     }
@@ -2328,118 +2800,96 @@ void loop1(void *pvParameters) {
   }
 }
 // *****************************************************************************************
-// **************************************  CORE 1 LOOP *************************************
+// **************************************  Comms LOOP  *************************************
 // *****************************************************************************************
 void loop2(void *pvParameters) {
-  Serial.print("loop running on core ");
+  Serial.print("cOMMS loop running on core ");
   Serial.println(xPortGetCoreID());
-  while (1) { // starts the forever loop
-    // place main blynk functions in here, everything wifi related:
-    unsigned long currentMillis1 = millis(); // sets the timer for timed operations
-    // place main blynk functions in here, everything wifi related:
-    if (RUNESPNOW) {
-      if (currentMillis1 - 5000 > PreviousMillis) {
-        PreviousMillis = currentMillis1;
-        //ESPNOWDATASEND = true;
-      }
-      if (ESPNOWDATASEND) {
-        ESPNOWDATASEND = false;
-        getReadings();
-        BroadcastData();
+  while (1) { // starts the forever loopws.cleanupClients();
+    ws.cleanupClients();
+    if (BROADCASTESPNOW) {
+      BROADCASTESPNOW = false;
+      getReadings();
+      BroadcastData(); // sending data via ESPNOW
+      Serial.println("Sent Data Via ESPNOW");
+      ResetReadings();
+    }
+    if (UPDATEWEBAPP) {
+      if (WebAppUpdaterProcessCounter < 2) {
+        if (WebAppUpdaterProcessCounter == 0) {
+            UpdateWebApp0();
+        }
+        if (WebAppUpdaterProcessCounter == 1) {
+          UpdateWebApp2();
+        }
+        WebAppUpdaterProcessCounter++;
+      } else {
+        UPDATEWEBAPP = false;
+        WebAppUpdaterProcessCounter = 0;
       }
     }
-    if (RUNBLYNK) {
-      Blynk.run();
-      if (POSTDOMINATIONSCORETOBLYNK) {
-        POSTDOMINATIONSCORETOBLYNK = false;
-        PostDominationScore();
-      }
+    //**************************************************************************************
+    // LoRa Receiver Main Functions:
+    if (LORALISTEN) {
+       ReceiveTransmission();
+    }
+    if (ENABLELORATRANSMIT) {
+      TransmitLoRa();
+      ENABLELORATRANSMIT = false;
     }
     delay(1); // this has to be here or the esp32 will just keep rebooting
   }
 }
-
-//*************************************************************************
-//************************** SETUP ROUTINE ********************************
-//*************************************************************************
-void setup() {
-  // initialize serial monitor
+// *****************************************************************************************
+// **************************************  Setup  ******************************************
+// *****************************************************************************************
+void setup(){
+  // Serial port for debugging purposes
   Serial.begin(115200);
-  Serial.println("Serial Monitor Started");
-  //***********************************************************************
-  // initialize the RGB pins
-  Serial.println("Initializing RGB Pins");
-  pinMode(red, OUTPUT);
-  pinMode(green, OUTPUT);
-  pinMode(blue, OUTPUT);
-  rgboff();
-  //***********************************************************************
-  // initialize piezo buzzer pin
-  Serial.println("Initializing Piezo Buzzer");
-  pinMode(buzzer, OUTPUT);
-  digitalWrite(buzzer, LOW);
-  //***********************************************************************
-  // initialize the IR digital pin as an output:
-  Serial.println("Initializing IR Output");
-  pinMode(IRledPin, OUTPUT);
-  //***********************************************************************
-  // initialize the IR receiver pin as an output:
-  Serial.println("Initializing IR Sensor");
-  pinMode(IR_Sensor_Pin, INPUT);
-  Serial.println("Ready to recieve BRX IR");
-  //***********************************************************************
-  // initialize LoRa Serial Comms and network settings:
-  Serial.println("Initializing LoRa");
-  Serial1.begin(115200, SERIAL_8N1, SERIAL1_RXPIN, SERIAL1_TXPIN); // setting up the LoRa pins
-  Serial1.print("AT\r\n"); // checking that serial is working with LoRa module
-  delay(100);
-  //Serial1.print("AT+PARAMETER=10,7,1,7\r\n");    //For Less than 3Kms
-  Serial1.print("AT+PARAMETER= 12,4,1,7\r\n");    //For More than 3Kms
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+BAND=868500000\r\n");    //Bandwidth set to 868.5MHz
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+ADDRESS=900\r\n");   //needs to be unique
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+NETWORKID=0\r\n");   //needs to be same for receiver and transmitter
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+PARAMETER?\r\n");    //For Less than 3Kms
-  delay(100); // 
-  Serial1.print("AT+BAND?\r\n");    //Bandwidth set to 868.5MHz
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+NETWORKID?\r\n");   //needs to be same for receiver and transmitter
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+ADDRESS?\r\n");   //needs to be unique
-  delay(100);   //wait for module to respond
-  pinMode(LED_BUILTIN, OUTPUT); // setting up the onboard LED to be used
-  digitalWrite(LED_BUILTIN, LOW); // turn off onboard led
-  digitalWrite(LED_BUILTIN, HIGH); // turn on onboard led
-  delay(500);
-  digitalWrite(LED_BUILTIN, LOW); // turn off onboard led
-  Serial.println("LoRa Module Initialized");
-  //***********************************************************************
-  // Initialize BLYNK
-  if (SETUPBLYNK) {
-    initializeblynk();
-    SETUPBLYNK = false;
-  }
-  //***********************************************************************
-  // Initialize ESPNOW
-  if (STARTESPNOW) {
-    STARTESPNOW = false;
-    initializeespnow();
-  }
-  //***********************************************************************
-  // initialize dual core and loops
-  Serial.println("Initializing Dual Core, Dual Loops");
-  Serial.print("setup() running on core ");
+
+  pinMode(ledPin, OUTPUT);
+  digitalWrite(ledPin, LOW);
+  
+  // Connect to Wi-Fi
+  Serial.println("Starting AP");
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(ssid, password);
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
+
+  initWebSocket();
+
+  // Route for root / web page
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    request->send_P(200, "text/html", index_html, processor);
+  });
+  
+  // json events
+    events.onConnect([](AsyncEventSourceClient *client){
+      if(client->lastId()){
+        Serial.printf("Client reconnected! Last message ID that it got is: %u\n", client->lastId());
+      }
+      // send event with message "hello!", id current millis
+      // and set reconnect delay to 1 second
+      client->send("hello!", NULL, millis(), 10000);
+    });
+    server.addHandler(&events);
+
+  // Start server
+  server.begin();
+
+  // Start ESP Now
+  Serial.print("ESP Board MAC Address:  ");
+  Serial.println(WiFi.macAddress());
+  Serial.println("Starting ESPNOW");
+  IntializeESPNOW();
+
   Serial.println(xPortGetCoreID());
   xTaskCreatePinnedToCore(loop1, "loop1", 4096, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(loop2, "loop2", 4096, NULL, 1, NULL, 1);
-}
+} // End of setup.
 
-//*************************************************************************
-//**************************** PRIMARY LOOP *******************************
-//*************************************************************************
 void loop() {
-  // Empty Loop
+  // Empy loop.
 }
