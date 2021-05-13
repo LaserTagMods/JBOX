@@ -22,8 +22,8 @@ Basic Concepts:
 The JBOX is a game box or accessory for the BRX line of taggers, if desired, 
 the IR Protocol could be changed easily to configure the device to any laser 
 tag equipment line. I hope to, in the future, make it compatible with all my 
-favorite laser tag gear. The device uses BLE to be configured and set by a mobile 
-device using the ITO control platform "BLYNK". A customized Blynk application 
+favorite laser tag gear. The device uses WiFi to be configured and set by a mobile 
+device using the ITO control platform "Web Server". A customized Blynk application 
 has been developed and is used for configuring and customizing the functions 
 of the JBOX device. If all components listed above are integrated, the device 
 can provide long range communication (device to device) for interactive game 
@@ -35,8 +35,8 @@ back and forth over short wifi limitations.
 
 This allows for the following communications capabilities, all simultaneously: 
   LORA(device to device only)
-  WIFI (ESPNOW) (device to device only)
-  BLE(mobile to device)
+  WIFI (ESPNOW) (device to device)
+  WIFI Access Point for a computer or mobile device to control it
   Infrared(device to BRX)
   MultiColor LED(Device to human eye).
 
@@ -157,29 +157,19 @@ Step 2: Download and install Arduino IDE on your computer, install the libraries
         if youve never done this before... so here are some tips/links:
   2a) Download and install Arduino: https://www.arduino.cc/en/software
   2b) Install Board Managers for ESP32: https://randomnerdtutorials.com/installing-the-esp32-board-in-arduino-ide-windows-instructions/
-  2c) Install the Blynk Library: http://help.blynk.cc/en/articles/512105-how-to-install-blynk-library-for-arduino-ide
+  2c) Install the Libraries: https://randomnerdtutorials.com/esp32-esp-now-wi-fi-web-server/
   2d) Hopefully thats all, If you cant upload the ino file to your esp32, you may have to search to find a driver for your computer
       for your specific board your using and also maybe see if there is a library that didnt get installed that the code is using, i
       think that they are covered though from the link above
   2X) forget it and just get one from my son if all this is too much of see if someone in the community will make one for you
 
-Step 3: Download and install the Blynk App to your bluetooth enabled mobile device: 
-  3a) Google Play: https://play.google.com/store/apps/details?id=cc.blynk
-  3b) Apple Store: https://apps.apple.com/us/app/blynk-iot-for-arduino-esp32/id808760481
 
-Step 4: Install a clone of my Blynk Application
-  4a) follow this link and scroll to the very last two steps: https://github.com/blynkkk/blynkkk.github.io/blob/master/Sharing.md
-  4b) use the qr image in this github to access to my Blynk Project for your own cloned copy
+Step 3: Open the Ino file from this repository on github.com
 
-Step 5: Open the Ino file from this repository on github.com
-
-Step 6: Youll need to change the Blynk Token in your ino file... 
-  6a) Search the ino file by pressing ctrl+f to find the following: "char auth[] ="
-  6b) Replace the "xxdlksuhneo84u498" craxy number/letter combination with what is found in your cloned blynk app, see link:
-  https://learn.sparkfun.com/tutorials/blynk-board-arduino-development-guide/get-a-blynk-auth-token#:~:text=To%20find%20an%20existing%20Blynk,and%20a%20couple%20handy%20buttons.
+Step 4: change the id of the JBOX if you will be having multiples, so that you can distinguish them from eachother, otherwise they will appear as the same device
 
 Step 7: Upload the ino (downloadable from this repository) to your esp32: https://www.dummies.com/computers/arduino/how-to-upload-a-sketch-to-an-arduino/
-  7a) be sure to set the "partition scheme" under to tools menu to "large apps (no OTA)"
+  7a) be sure to set the "partition scheme" under to tools menu to "large apps (no OTA)", It actually works under default... but I may update it with more data later
 
 Step 8: follow the App Use Video: (video coming soon)
 
