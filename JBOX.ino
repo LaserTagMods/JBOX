@@ -28,6 +28,10 @@
  *            = Added buzzer sound when activating a function
  *            - Cleaned up RGB Indicators a Bit for completed modes thus far
  * 5/13/21    - Migrated everything to web server controls versus blynk and moved the lora to the comms loop 
+ * 5/13/21    - Added a couple other game modes for domination base capture play
+ * 5/14/21    - Successfully integrated LTTO tags into the game so you cn select LTTO for domination game play as well.
+ * 
+ * 
  * 
 */
 
@@ -150,6 +154,9 @@ int TeamScore[4]; // used to track team score
 int PlayerScore[64]; // used to track individual player score
 int CapturableEmitterScore[4]; // used for accumulating points for capturability to alter team alignment
 int RequiredCapturableEmitterCounter = 10;
+bool FIVEMINUTEDOMINATION = false;
+bool TENMINUTEDOMINATION = false;
+bool FIVEMINUTETUGOWAR = false;
 
 long PreviousDominationClock = 0;
 
@@ -245,6 +252,15 @@ const int fixedbuzzerduration = buzzerduration; // assigns a constant buzzer dur
 unsigned long buzzerpreviousMillis = 0;
 const long buzzerinterval = 5000;
 
+// LTTO VARIABLES NEEDED
+int PLTTO[2];
+int TLTTO[3];
+int DLTTO[2];
+//int PlayerID = 99;
+//int TeamID = 99;
+//int DamageID = 99;
+bool LTTOHOSTED = false;
+int GearMod = 0;
 
 //*****************************************************************************************
 // ESP Now Objects:
@@ -585,6 +601,9 @@ const char index_html[] PROGMEM = R"rawliteral(
       <h2>Primary Function</h2>
       <p><select name="primary" id="primaryid">
         <option value="1">Basic Domination</option>
+        <option value="5">5 Minute Domination</option>
+        <option value="6">10 Minute Domination</option>
+        <option value="7">5 Minute Tug of War</option>
         <option value="2">Continuous IR Emitter</option>
         <option value="3">Tag Activated IR Emitter</option>
         <option value="4">Capturable Continuous IR Emitter</option>
@@ -661,11 +680,10 @@ const char index_html[] PROGMEM = R"rawliteral(
         </select>
       </p>
       <h2>Gear Compatibility Selector</h2>
-      <h2>(comming soon...)</h2>
       <p><select name="ambience" id="ambienceid">
         <option value="601">BRX</option>
         <option value="602">LTTO</option>
-        <option value="603">Recoil</option>
+        <option value="603">Recoil - (coming soon)</option>
         </select>
       </p>
       <p><button id="gameover" class="button">End Game</button></p>
@@ -859,6 +877,9 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
       BASECONTINUOUSIRPULSE = false;
       ENABLEIRRECEIVER = true;
+      FIVEMINUTEDOMINATION = false;
+      TENMINUTEDOMINATION = false;
+      FIVEMINUTETUGOWAR = false;
     }
     if (strcmp((char*)data, "2") == 0) {
       // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
@@ -879,6 +900,9 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       ResetAllIRProtocols(); // Resets all ir protocols
       TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
       ENABLEIRRECEIVER = false; // deactivates the ir receiver to avoid unnecessary processes
+      FIVEMINUTEDOMINATION = false;
+      TENMINUTEDOMINATION = false;
+      FIVEMINUTETUGOWAR = false;
     }
     if (strcmp((char*)data, "3") == 0) {
       // Clears out any existing IR and Base Game Settings
@@ -897,6 +921,9 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
       ResetAllIRProtocols(); // resets all ir protocols
       MOTIONSENSOR = true; // enables the alarm sound tag protocol 
+      FIVEMINUTEDOMINATION = false;
+      TENMINUTEDOMINATION = false;
+      FIVEMINUTETUGOWAR = false;
     }
     if (strcmp((char*)data, "4") == 0) {
       // Clears out existing settings
@@ -918,6 +945,78 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       ResetAllIRProtocols(); // reset all ir protocols
       RESPAWNSTATION = true; // enables the alarm sound tag protocol
       CAPTURABLEEMITTER = true; // enables the team freindly to be toggled via IR  
+      FIVEMINUTEDOMINATION = false;
+      TENMINUTEDOMINATION = false;
+      FIVEMINUTETUGOWAR = false;
+    }
+    if (strcmp((char*)data, "5") == 0) {
+      // 5 Minute domination mode that provides both player scoring and team scoring
+      // Scoring reports over webserver to paired mobile device and refreshes every time
+      // the score changes. To deactivate, select this option a second time to pause
+      // the game/score. Recommended as a standalone base use only. Each time base is
+      // shot, the team or player who shot takes posession and the base emitts a tag
+      // that notifies player that the base (control point) was captured.
+      Serial.println("5 Min Domination Mode - Default!!!");
+      //debugmonitor.println("Basic Domination Mode - Default!!!");
+      Function = 1;
+      RGBWHITE = true;
+      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
+      DOMINATIONCLOCK = false; // stops the game from going if already running
+      BASICDOMINATION = true; // enables this game mode
+      ResetAllIRProtocols(); // resets all ir protocols
+      CONTROLPOINTCAPTURED = true; // enables control point captured call out
+      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
+      BASECONTINUOUSIRPULSE = false;
+      ENABLEIRRECEIVER = true;
+      FIVEMINUTEDOMINATION = true;
+      TENMINUTEDOMINATION = false;
+      FIVEMINUTETUGOWAR = false;  
+    }
+    if (strcmp((char*)data, "6") == 0) {
+      // 10 Minute domination mode that provides both player scoring and team scoring
+      // Scoring reports over webserver to paired mobile device and refreshes every time
+      // the score changes. To deactivate, select this option a second time to pause
+      // the game/score. Recommended as a standalone base use only. Each time base is
+      // shot, the team or player who shot takes posession and the base emitts a tag
+      // that notifies player that the base (control point) was captured.
+      Serial.println("10 min Domination Mode - Default!!!");
+      //debugmonitor.println("Basic Domination Mode - Default!!!");
+      Function = 1;
+      RGBWHITE = true;
+      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
+      DOMINATIONCLOCK = false; // stops the game from going if already running
+      BASICDOMINATION = true; // enables this game mode
+      ResetAllIRProtocols(); // resets all ir protocols
+      CONTROLPOINTCAPTURED = true; // enables control point captured call out
+      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
+      BASECONTINUOUSIRPULSE = false;
+      ENABLEIRRECEIVER = true;
+      FIVEMINUTEDOMINATION = false;
+      TENMINUTEDOMINATION = true;
+      FIVEMINUTETUGOWAR = false;
+    }
+    if (strcmp((char*)data, "7") == 0) {
+      // 5 Minute tug o war domination mode that provides both player scoring and team scoring
+      // Scoring reports over webserver to paired mobile device and refreshes every time
+      // the score changes. To deactivate, select this option a second time to pause
+      // the game/score. Recommended as a standalone base use only. Each time base is
+      // shot, the team or player who shot takes posession and the base emitts a tag
+      // that notifies player that the base (control point) was captured.
+      Serial.println("5 min Tug of War Domination Mode - Default!!!");
+      //debugmonitor.println("Basic Domination Mode - Default!!!");
+      Function = 1;
+      RGBWHITE = true;
+      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
+      DOMINATIONCLOCK = false; // stops the game from going if already running
+      BASICDOMINATION = true; // enables this game mode
+      ResetAllIRProtocols(); // resets all ir protocols
+      CONTROLPOINTCAPTURED = true; // enables control point captured call out
+      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
+      BASECONTINUOUSIRPULSE = false;
+      ENABLEIRRECEIVER = true;
+      FIVEMINUTEDOMINATION = true;
+      TENMINUTEDOMINATION = false;
+      FIVEMINUTETUGOWAR = true;
     }
     if (strcmp((char*)data, "101") == 0) {
       MOTIONSENSOR = true;
@@ -1200,9 +1299,11 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     }
     if (strcmp((char*)data, "601") == 0) {
       Serial.println("BRX Mode");
+      GearMod = 0;
     }
     if (strcmp((char*)data, "602") == 0) {
       Serial.println("LTTO Mode");
+      GearMod = 1;
     }
     if (strcmp((char*)data, "603") == 0) {
       Serial.println("Recoil Mode");
@@ -1525,18 +1626,6 @@ void PrintReceivedTag() {
   Serial.print("Z0: "); Serial.println(ZZ[0]);
   Serial.print("Z1: "); Serial.println(ZZ[1]);
 }
-void PrintReceivedLTTOTag() {
-  // prints each individual bit on serial monitor
-  // typically not used but used for troubleshooting
-  Serial.println("TagReceived!!");
-  //Serial.print("LTTOT0: "); Serial.println(LTTOT0[0]);
-  //Serial.print("LTTOT1: "); Serial.println(LTTOT1[1]);
-  //Serial.print("LTTOP0: "); Serial.println(LTTOP0[2]);
-  //Serial.print("LTTOP1: "); Serial.println(LTTOP1[3]);
-  //Serial.print("LTTOP2: "); Serial.println(LTTOP2[0]);
-  //Serial.print("LTTOM0: "); Serial.println(LTTOM0[1]);
-  //Serial.print("LTTOM1: "); Serial.println(LTTOM1[2]);
-}
 // this procedure breaksdown each Weapon bit of the brx ir signal recieved and assigns the applicable bit value then adds them together to identify the player ID (1-64)
 void IDDamage() {
       // determining indivudual protocol values for Weapon ID bits
@@ -1808,6 +1897,164 @@ void receiveBRXir() {
       //Serial.println("Incorrect Sync Bits from Protocol, not BRX");
     }
 }
+
+//******************************************************************************************************************************************************************************************
+void PrintLTTOTag() {
+  // prints each individual bit on serial monitor
+  Serial.println("TagReceived!!");
+  Serial.println(PLTTO[0]);
+  Serial.println(PLTTO[1]);
+  Serial.println(TLTTO[0]);
+  Serial.println(TLTTO[1]);
+  Serial.println(TLTTO[2]);
+  Serial.println(DLTTO[0]);
+  Serial.println(DLTTO[1]);
+}
+//******************************************************************************************************************************************************************************************
+void IDLTTOTeam() {
+  int PID[2];
+  int TID[3];
+  if (PLTTO[1] > 1750) {
+    PID[1] = 1;
+  } else {
+    PID[1] = 0;
+  }
+  if (PLTTO[0] > 1750) {
+    PID[0] = 2;
+  } else {
+    PID[0] = 0;
+  }
+  if (TLTTO[2] > 1750) {
+    TID[2] = 1;
+  } else {
+    TID[2] = 0;
+  }
+  if (TLTTO[1] > 1750) {
+    TID[1] = 2;
+  } else {
+    TID[1] = 0;
+  }
+  if (TLTTO[0] > 1750) {
+    TID[0] = 4;
+  } else {
+    TID[0] = 0;
+  }
+  if (!LTTOHOSTED) {
+    Serial.println("Grab and Go Game");
+    Serial.print("Team identified as: ");
+    TeamID = TID[2] + TID[1] + TID[0];
+    if (TeamID == 0) {
+      Serial.println("Solo");
+    }
+    if (TeamID == 1) {
+      Serial.println("Team 1");
+    }
+    if (TeamID == 2) {
+      Serial.println("Team 2");
+    }
+    if (TeamID == 3) {
+      Serial.println("Team 3");
+    }
+  } else {
+    Serial.println("Hosted Game");
+    PlayerID = TID[2] + TID[1] + TID[0] + 1;
+    TeamID = PID[0] + PID[1];
+    Serial.print("Team identified as: ");
+    if (TeamID == 0) {
+      Serial.println("Solo");
+    }
+    if (TeamID == 1) {
+      Serial.println("Team 1");
+    }
+    if (TeamID == 2) {
+      Serial.println("Team 2");
+    }
+    if (TeamID == 3) {
+      Serial.println("Team 3");
+    }
+    Serial.print("Player identified as: ");
+    Serial.println(PlayerID);
+  }
+}
+
+void IDLTTODamage() {
+  int DID[3];
+  if (DLTTO[1] > 1750) {
+    DID[1] = 1;
+  } else {
+    DID[1] = 0;
+  }
+  if (DLTTO[0] > 1750) {
+    DID[0] = 2;
+  } else {
+    DID[0] = 0;
+  }
+  Serial.print("Tag damage = ");
+  DamageID = DID[1] + DID[0] + 1;
+  Serial.println(DamageID);
+}
+//******************************************************************************************************************************************************************************************
+// This procedure uses the preset IR_Sensor_Pin to determine if an ir received is BRX, if so it records the protocol received
+void ReceiveLTTO() {
+  // makes the action below happen as it cycles through the 25 bits as was delcared above
+  for (byte x = 0; x < 2; x++) PLTTO[x]=0;
+  for (byte x = 0; x < 3; x++) TLTTO[x]=0;
+  for (byte x = 0; x < 2; x++) DLTTO[x]=0;
+  // checks for a 3 millisecond sync pulse signal with a tollerance of 500 microsecons
+  if (pulseIn(IR_Sensor_Pin, LOW, 250000) > 2500) {
+    if (pulseIn(IR_Sensor_Pin, LOW) < 3200) {
+      // stores each pulse or bit, individually
+      PLTTO[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // P0
+      PLTTO[1] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // P1
+      TLTTO[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // T0
+      TLTTO[1] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // T1
+      TLTTO[2] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // T2
+      DLTTO[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D0
+      DLTTO[1] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D1
+      // run a test on the tag before anything else:
+      bool ISLTTO = true;
+      if (PLTTO[0] < 750 || PLTTO[0] > 2250) {ISLTTO = false;}
+      if (PLTTO[1] < 750 || PLTTO[1] > 2250) {ISLTTO = false;}
+      if (TLTTO[0] < 750 || TLTTO[0] > 2250) {ISLTTO = false;}
+      if (TLTTO[1] < 750 || TLTTO[1] > 2250) {ISLTTO = false;}
+      if (TLTTO[2] < 750 || TLTTO[2] > 2250) {ISLTTO = false;}
+      if (DLTTO[0] < 750 || DLTTO[0] > 2250) {ISLTTO = false;}
+      if (DLTTO[1] < 750 || DLTTO[1] > 2250) {ISLTTO = false;} 
+      if (ISLTTO) {
+        PrintLTTOTag(); // runs a proceedure, see proceedure for details
+        if (PLTTO[0] > 1750 || PLTTO[1] > 1750) { // this is a hosted game
+          LTTOHOSTED = true;
+        }
+        IDLTTOTeam(); // check team
+        IDLTTODamage(); // check the damageif (CAPTURABLEEMITTER) {
+        ChangeBaseAlignment();
+        if (BASICDOMINATION) {
+          BasicDomination();
+        }
+        if (TAGACTIVATEDIR) {
+          if (TAGACTIVATEDIRCOOLDOWN) {
+            TAGACTIVATEDIR = false;
+            if (ANYTEAM) {
+              Team = TeamID;
+            }
+            CoolDownStart = millis();
+            resetRGB();
+            RGBRED = true;
+          }
+          VerifyCurrentIRTagSelection();
+          BUZZ = true;
+        }
+        if (TAGACTIVATEDIRCOOLDOWN) {
+          if (!TAGACTIVATEDIR) {
+            // this means that the base is on cool down, should send alarm or damage or something
+          }
+        }
+      }
+    }
+  }
+}
+//******************************************************************************************************************************************************************************************
+
 //*************************************************************************
 //************************** IR LED OBJECTS *******************************
 //*************************************************************************
@@ -2667,6 +2914,20 @@ void buzz() {
 
 void AddPointToTeamWithPossession() {
   TeamScore[TeamID]++;
+  if (FIVEMINUTETUGOWAR) {
+    if (TeamID != 0 && TeamScore[0] > 0) {
+      TeamScore[0]--;
+    }
+    if (TeamID != 1 && TeamScore[1] > 0) {
+      TeamScore[1]--;
+    }
+    if (TeamID != 2 && TeamScore[2] > 0) {
+      TeamScore[2]--;
+    }
+    if (TeamID != 3 && TeamScore[3] > 0) {
+      TeamScore[3]--;
+    }
+  }
 }
 void AddPointToPlayerWithPossession() {
   PlayerScore[PlayerID]++;
@@ -2770,7 +3031,12 @@ void loop1(void *pvParameters) {
     //**************************************************************************************
     // IR Receiver main functions:
     if (ENABLEIRRECEIVER || TAGACTIVATEDIR) { // default has ir receiver enabled for auto game start
-      receiveBRXir(); // runs the ir receiver, looking for brx ir protocols
+      if (GearMod == 0) {
+        receiveBRXir(); // runs the ir receiver, looking for brx ir protocols
+      }
+      if (GearMod == 1) {
+        ReceiveLTTO(); // runs the ir receiver, looking for LTTO ir protocols
+      }
       if (TAGACTIVATEDIRCOOLDOWN) {
         if (!TAGACTIVATEDIR) {
           // Base is in cool down
@@ -2803,7 +3069,31 @@ void loop1(void *pvParameters) {
           Serial.println("Run points accumulator for Players");
           AddPointToPlayerWithPossession();
           Serial.println("Enable Score Posting");
-        } 
+          if (FIVEMINUTEDOMINATION) {
+            if (TeamScore[0] > 300 || TeamScore[1] > 300 || TeamScore[2] > 300 || TeamScore[3] > 300) {
+              // one team has 5 minutes
+              DOMINATIONCLOCK = false;
+              BASICDOMINATION = false;
+              // ends the game for everyone
+              datapacket2 = 1400;
+              datapacket1 = 99;
+              BROADCASTESPNOW = true;
+              Serial.println("A team has reached the goal, ending game");
+            }
+          }
+          if (TENMINUTEDOMINATION) {
+            if (TeamScore[0] > 600 || TeamScore[1] > 600 || TeamScore[2] > 600 || TeamScore[3] > 600) {
+              // one team has 10 minutes
+              DOMINATIONCLOCK = false;
+              BASICDOMINATION = false;
+              // ends the game for everyone
+              datapacket2 = 1400;
+              datapacket1 = 99;
+              BROADCASTESPNOW = true;
+              Serial.println("A team has reached the goal, ending game");
+            }
+          }
+        }
       }
     }
     delay(1); // this has to be here or it will just continue to restart the esp32
