@@ -259,7 +259,7 @@ int DLTTO[2];
 //int PlayerID = 99;
 //int TeamID = 99;
 //int DamageID = 99;
-bool LTTOHOSTED = false;
+int LTTOTagType = 99;
 int GearMod = 0;
 
 //*****************************************************************************************
@@ -696,19 +696,19 @@ const char index_html[] PROGMEM = R"rawliteral(
   <div class="scontent">
     <div class="scards">
       <div class="scard red">
-        <h4>Alpha Team</h4>
+        <h4>Alpha Team - LTTO Solo</h4>
         <p><span class="reading"> Points:<span id="to0"></span></p>
       </div>
       <div class="scard blue">
-        <h4>Bravo Team</h4><p>
+        <h4>Bravo Team - LTTO Team 1</h4><p>
         <p><span class="reading"> Points:<span id="to1"></span></p>
       </div>
       <div class="scard yellow">
-        <h4>Charlie Team</h4>
+        <h4>Charlie Team - LTTO Team 2</h4>
         <p><span class="reading"> Points:<span id="to2"></span></p>
       </div>
       <div class="scard green">
-        <h4>Delta Team</h4>
+        <h4>Delta Team - LTTO Team 3</h4>
         <p><span class="reading"> Points:<span id="to3"></span></p>
       </div>
     </div>
@@ -1939,7 +1939,7 @@ void IDLTTOTeam() {
   } else {
     TID[0] = 0;
   }
-  if (!LTTOHOSTED) {
+  if (LTTOTagType == 1) {
     Serial.println("Grab and Go Game");
     Serial.print("Team identified as: ");
     TeamID = TID[2] + TID[1] + TID[0];
@@ -2020,33 +2020,42 @@ void ReceiveLTTO() {
       if (TLTTO[2] < 750 || TLTTO[2] > 2250) {ISLTTO = false;}
       if (DLTTO[0] < 750 || DLTTO[0] > 2250) {ISLTTO = false;}
       if (DLTTO[1] < 750 || DLTTO[1] > 2250) {ISLTTO = false;} 
-      if (ISLTTO) {
-        PrintLTTOTag(); // runs a proceedure, see proceedure for details
+      if (ISLTTO) { // this means this is a good tag and we are most likely using it
+        // now lets check what kind of tag it is...
         if (PLTTO[0] > 1750 || PLTTO[1] > 1750) { // this is a hosted game
-          LTTOHOSTED = true;
-        }
-        IDLTTOTeam(); // check team
-        IDLTTODamage(); // check the damageif (CAPTURABLEEMITTER) {
-        ChangeBaseAlignment();
-        if (BASICDOMINATION) {
-          BasicDomination();
-        }
-        if (TAGACTIVATEDIR) {
-          if (TAGACTIVATEDIRCOOLDOWN) {
-            TAGACTIVATEDIR = false;
-            if (ANYTEAM) {
-              Team = TeamID;
-            }
-            CoolDownStart = millis();
-            resetRGB();
-            RGBRED = true;
+          LTTOTagType = 0;
+        } else {
+          LTTOTagType = 1; // use 1 as a grab and go tag
+          // so we know it is a grab and go, but it still could be a zone tag, lets be sure...
+          if (TLTTO[0] > 1750) {
+            LTTOTagType = 2; // it is a zone tag.
           }
-          VerifyCurrentIRTagSelection();
-          BUZZ = true;
         }
-        if (TAGACTIVATEDIRCOOLDOWN) {
-          if (!TAGACTIVATEDIR) {
-            // this means that the base is on cool down, should send alarm or damage or something
+        if (LTTOTagType < 2) {
+          PrintLTTOTag(); // runs a proceedure, see proceedure for details
+          IDLTTOTeam(); // check team
+          IDLTTODamage(); // check the damageif (CAPTURABLEEMITTER) {
+          ChangeBaseAlignment();
+          if (BASICDOMINATION) {
+            BasicDomination();
+          }
+          if (TAGACTIVATEDIR) {
+            if (TAGACTIVATEDIRCOOLDOWN) {
+              TAGACTIVATEDIR = false;
+              if (ANYTEAM) {
+                Team = TeamID;
+              }
+              CoolDownStart = millis();
+              resetRGB();
+              RGBRED = true;
+            }
+            VerifyCurrentIRTagSelection();
+            BUZZ = true;
+          }
+          if (TAGACTIVATEDIRCOOLDOWN) {
+            if (!TAGACTIVATEDIR) {
+              // this means that the base is on cool down, should send alarm or damage or something
+            }
           }
         }
       }
