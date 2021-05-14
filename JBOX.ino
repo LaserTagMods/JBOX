@@ -30,7 +30,8 @@
  * 5/13/21    - Migrated everything to web server controls versus blynk and moved the lora to the comms loop 
  * 5/13/21    - Added a couple other game modes for domination base capture play
  * 5/14/21    - Successfully integrated LTTO tags into the game so you cn select LTTO for domination game play as well.
- * 
+ *            = Added in a check for Zone tags for LTTO
+ *            - Added LTTO IR tags to send
  * 
  * 
 */
@@ -175,6 +176,8 @@ int D[8];
 int C[1];
 int X[2];
 int Z[2];
+int SyncLTTO = 3;
+int LTTOA[7];
 
 int BulletType = 0;
 int Player = 0;
@@ -212,7 +215,12 @@ bool MEDKIT = false;
 bool LOOTBOX = false;
 bool ARMORBOOST = false;
 bool SHEILDS = false;
-
+bool LTTORESPAWN = false;
+bool LTTOOTZ = false;
+bool LTTOHOSTILED1 = false;
+bool LTTOHOSTILED2 = false;
+bool LTTOHOSTILED3 = false;
+bool LTTOHOSTILED4 = false;
 
 //  CORE VARIABLE DELCARATIONS
 unsigned long core0previousMillis = 0;
@@ -626,6 +634,12 @@ const char index_html[] PROGMEM = R"rawliteral(
         <option value="113">Sheilds Boost</option>
         <option value="114">Own the Zone</option>
         <option value="115">Control Point Captured</option>
+        <option value="116">LTTO Respawn</option>
+        <option value="117">LTTO Own The Zone</option>
+        <option value="118">LTTO Hostile 1 Tag</option>
+        <option value="119">LTTO Hostile 2 Tags</option>
+        <option value="120">LTTO Hostile 3 Tags</option>
+        <option value="121">LTTO Hostile 4 Tags</option>
         </select>
       </p><h2>Team Friendly/Alignment Settings</h2>
       <p><select name="ammo" id="ammoid">
@@ -1019,78 +1033,129 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       FIVEMINUTETUGOWAR = true;
     }
     if (strcmp((char*)data, "101") == 0) {
+      ResetAllIRProtocols();
       MOTIONSENSOR = true;
       Serial.println("Motion Sensor Enabled!!!");
       //debugmonitor.println("Motion Sensor Enabled!!!");
     }
     if (strcmp((char*)data, "102") == 0) {
+      ResetAllIRProtocols();
       CAPTURETHEFLAG = true;
       Serial.println("Capture the Flag Enabled!!!");
       //debugmonitor.println("Capture the Flag Enabled!!!");
     }
     if (strcmp((char*)data, "103") == 0) {
+      ResetAllIRProtocols();
       CONTROLPOINTLOST = true;
       Serial.println("Control Point Lost Enabled!!!");
       //debugmonitor.println("Control Point Lost Enabled!!!");
     }
     if (strcmp((char*)data, "104") == 0) {
+      ResetAllIRProtocols();
       GASGRENADE = true;
       Serial.println("Gas Grenade Enabled!!!");
       //debugmonitor.println("Gas Grenade Enabled!!!");
     }
     if (strcmp((char*)data, "105") == 0) {
+      ResetAllIRProtocols();
       LIGHTDAMAGE = true;
       Serial.println("Light Damage Enabled!!!");
       //debugmonitor.println("Light Damage Enabled!!!");
     }
     if (strcmp((char*)data, "106") == 0) {
+      ResetAllIRProtocols();
       MEDIUMDAMAGE = true;
       Serial.println("Medium Damage Enabled!!!");
       //debugmonitor.println("Medium Damage Enabled!!!");
     }
     if (strcmp((char*)data, "107") == 0) {
+      ResetAllIRProtocols();
       HEAVYDAMAGE = true;
       Serial.println("Heavy Damage Enabled!!!");
       //debugmonitor.println("Heavy Damage Enabled!!!");
     }
     if (strcmp((char*)data, "108") == 0) {
+      ResetAllIRProtocols();
       FRAG = true;
       Serial.println("Explosive Damage Enabled!!!");
       //debugmonitor.println("Explosive Damage Enabled!!!");
     }
     if (strcmp((char*)data, "109") == 0) {
+      ResetAllIRProtocols();
       RESPAWNSTATION = true;
       Serial.println("Respawn Station Enabled!!!");
       //debugmonitor.println("Respawn Station Enabled!!!");
     }
     if (strcmp((char*)data, "110") == 0) {
+      ResetAllIRProtocols();
       MEDKIT = true;
       Serial.println("Medkit Enabled!!!");
       //debugmonitor.println("Medkit Enabled!!!");
     }
     if (strcmp((char*)data, "112") == 0) {
+      ResetAllIRProtocols();
       ARMORBOOST = true;
       Serial.println("Armor Boost Enabled!!!");
       //debugmonitor.println("Armor Boost Enabled!!!");
     }
     if (strcmp((char*)data, "113") == 0) {
+      ResetAllIRProtocols();
       SHEILDS = true;
       Serial.println("Sheilds Enabled!!!");
       //debugmonitor.println("Sheilds Enabled!!!");
     }
     if (strcmp((char*)data, "111") == 0) {
+      ResetAllIRProtocols();
       LOOTBOX = true;
       Serial.println("Loot Box Enabled!!!");
       //debugmonitor.println("Loot Box Enabled!!!");
     }
     if (strcmp((char*)data, "114") == 0) {
+      ResetAllIRProtocols();
       OWNTHEZONE = true;
       Serial.println("Own The Zone Enabled!!!");
       //debugmonitor.println("Own The Zone Enabled!!!");
     }
     if (strcmp((char*)data, "115") == 0) {
+      ResetAllIRProtocols();
       CONTROLPOINTCAPTURED = true;
       Serial.println("Control Point Captured Enabled!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
+    }
+    if (strcmp((char*)data, "116") == 0) {
+      ResetAllIRProtocols();
+      LTTORESPAWN = true;
+      Serial.println("LTTO Respawns Enabled!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
+    }
+    if (strcmp((char*)data, "117") == 0) {
+      ResetAllIRProtocols();
+      LTTOOTZ = true;
+      Serial.println("LTTO Own The Zone!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
+    }
+    if (strcmp((char*)data, "118") == 0) {
+      ResetAllIRProtocols();
+      LTTOHOSTILED1 = true;
+      Serial.println("Hostile single Tag!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
+    }
+    if (strcmp((char*)data, "119") == 0) {
+      ResetAllIRProtocols();
+      LTTOHOSTILED2 = true;
+      Serial.println("Hostile double tag!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
+    }
+    if (strcmp((char*)data, "120") == 0) {
+      ResetAllIRProtocols();
+      LTTOHOSTILED3 = true;
+      Serial.println("Hostile triple tag!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
+    }
+    if (strcmp((char*)data, "121") == 0) {
+      ResetAllIRProtocols();
+      LTTOHOSTILED4 = true;
+      Serial.println("Hostile quad tag!!!");
       //debugmonitor.println("Control Point Captured Enabled!!!");
     }
     if (strcmp((char*)data, "201") == 0) {
@@ -2083,6 +2148,40 @@ void pulseIR(long microsecs) {
   }
   sei();  // this turns them back on
 }
+void pulseLTTOIR(long microsecs) {
+  // we'll count down from the number of microseconds we are told to wait
+  cli();  // this turns off any background interrupts
+  while (microsecs > 0) {
+    // 38 kHz is about 13 microseconds high and 13 microseconds low
+    digitalWrite(IRledPin, HIGH);  // this takes about 3 microseconds to happen
+    delayMicroseconds(10);         // hang out for 10 microseconds, you can also change this to 9 if its not working
+    digitalWrite(IRledPin, LOW);   // this also takes about 3 microseconds
+    delayMicroseconds(10);         // hang out for 10 microseconds, you can also change this to 9 if its not working
+    // so 26 microseconds altogether
+    microsecs -= 26;
+  }
+  sei();  // this turns them back on
+}
+void SendLTTOIR() {
+  Serial.println("Sending IR signal");
+  pulseLTTOIR(3000); // sync
+  delay(2); // delay
+  pulseLTTOIR(SyncLTTO); // sync
+  delay(2); // delay
+  pulseLTTOIR(LTTOA[0]); // 
+  delay(2); // delay
+  pulseLTTOIR(LTTOA[1]); // 
+  delay(2); // delay
+  pulseLTTOIR(LTTOA[2]); // 
+  delay(2); // delay
+  pulseLTTOIR(LTTOA[3]); // 
+  delay(2); // delay
+  pulseLTTOIR(LTTOA[4]); // 
+  delay(2); // delay
+  pulseLTTOIR(LTTOA[5]); // 
+  delay(2); // delay
+  pulseLTTOIR(LTTOA[6]); // 
+}
 void SendIR() {
   Serial.println("Sending IR signal");
   pulseIR(2000); // sync
@@ -2136,6 +2235,134 @@ void SendIR() {
   pulseIR(Z[0]); // Z1
   delayMicroseconds(500); // delay
   pulseIR(Z[1]); // Z1
+}
+void LTTORespawn(){
+  SyncLTTO = 6000;
+  LTTOA[0] = 1000;
+  LTTOA[1] = 1000;
+  LTTOA[2] = 1000;
+  LTTOA[3] = 2000;
+  LTTOA[4] = 2000;
+  LTTOA[5] = 0;
+  LTTOA[6] = 0;
+  SendLTTOIR();
+  Serial.println("Sent LTTO Tag - Respawn");
+}
+void LTTOotz(){
+  SyncLTTO = 6000;
+  LTTOA[0] = 1000;
+  LTTOA[1] = 1000;
+  LTTOA[2] = 1000;
+  LTTOA[3] = 2000;
+  LTTOA[4] = 1000;
+  LTTOA[5] = 0000;
+  LTTOA[6] = 0000;
+  SendLTTOIR();
+  Serial.println("Sent LTTO Tag - OTZ");
+}
+void LTTOHostileD1(){
+  SyncLTTO = 3000;
+  LTTOA[0] = 1000;
+  LTTOA[1] = 1000;
+  LTTOA[2] = 2000;
+  if (Team == 0) {
+    LTTOA[3] = 1000;
+    LTTOA[4] = 1000;
+  }
+  if (Team == 1) {
+    LTTOA[3] = 1000;
+    LTTOA[4] = 2000;
+  }
+  if (Team == 2) {
+    LTTOA[3] = 2000;
+    LTTOA[4] = 1000;
+  }
+  if (Team == 3) {
+    LTTOA[3] = 2000;
+    LTTOA[4] = 2000;
+  }
+  LTTOA[5] = 1000;
+  LTTOA[6] = 1000;
+  SendLTTOIR();
+  Serial.println("Sent LTTO Tag - Hostile D1");
+}
+void LTTOHostileD2(){
+  SyncLTTO = 3000;
+  LTTOA[0] = 1000;
+  LTTOA[1] = 1000;
+  LTTOA[2] = 2000;
+  if (Team == 0) {
+    LTTOA[3] = 1000;
+    LTTOA[4] = 1000;
+  }
+  if (Team == 1) {
+    LTTOA[3] = 1000;
+    LTTOA[4] = 2000;
+  }
+  if (Team == 2) {
+    LTTOA[3] = 2000;
+    LTTOA[4] = 1000;
+  }
+  if (Team == 3) {
+    LTTOA[3] = 2000;
+    LTTOA[4] = 2000;
+  }
+  LTTOA[5] = 1000;
+  LTTOA[6] = 2000;
+  SendLTTOIR();
+  Serial.println("Sent LTTO Tag - Hostile D2");
+}
+void LTTOHostileD3(){
+  SyncLTTO = 3000;
+  LTTOA[0] = 1000;
+  LTTOA[1] = 1000;
+  LTTOA[2] = 2000;
+  if (Team == 0) {
+    LTTOA[3] = 1000;
+    LTTOA[4] = 1000;
+  }
+  if (Team == 1) {
+    LTTOA[3] = 1000;
+    LTTOA[4] = 2000;
+  }
+  if (Team == 2) {
+    LTTOA[3] = 2000;
+    LTTOA[4] = 1000;
+  }
+  if (Team == 3) {
+    LTTOA[3] = 2000;
+    LTTOA[4] = 2000;
+  }
+  LTTOA[5] = 2000;
+  LTTOA[6] = 1000;
+  SendLTTOIR();
+  Serial.println("Sent LTTO Tag - Hostile D3");
+}
+void LTTOHostileD4(){
+  SyncLTTO = 3000;
+  LTTOA[0] = 1000;
+  LTTOA[1] = 1000;
+  LTTOA[2] = 2000;
+  if (Team == 0) {
+    LTTOA[3] = 1000;
+    LTTOA[4] = 1000;
+  }
+  if (Team == 1) {
+    LTTOA[3] = 1000;
+    LTTOA[4] = 2000;
+  }
+  if (Team == 2) {
+    LTTOA[3] = 2000;
+    LTTOA[4] = 1000;
+  }
+  if (Team == 3) {
+    LTTOA[3] = 2000;
+    LTTOA[4] = 2000;
+  }
+  LTTOA[5] = 2000;
+  LTTOA[6] = 2000;
+  SendLTTOIR();
+  Serial.println("Sent LTTO Tag - Hostile D4");
 }
 void Sheilds() { // not set properly yet
   BulletType = 15;
@@ -2871,9 +3098,26 @@ void VerifyCurrentIRTagSelection() {
   if (OWNTHEZONE) {
     OwnTheZone();
   }
-  
   if (HITTAG) {
     HitTag();
+  }
+  if (LTTORESPAWN) {
+    LTTORespawn();
+  }
+  if (LTTOOTZ) {
+    LTTOotz();
+  }
+  if (LTTOHOSTILED1) {
+    LTTOHostileD1();
+  }
+  if (LTTOHOSTILED2) {
+    LTTOHostileD2();
+  }
+  if (LTTOHOSTILED3) {
+    LTTOHostileD3();
+  }
+  if (LTTOHOSTILED4) {
+    LTTOHostileD4();
   }
   if (MOTIONSENSOR) {
     MotionSensor();
@@ -2898,6 +3142,12 @@ void ResetAllIRProtocols() {
   LOOTBOX = false;
   ARMORBOOST = false;
   SHEILDS = false;
+  LTTORESPAWN = false;
+  LTTOOTZ = false;
+  LTTOHOSTILED1 = false;
+  LTTOHOSTILED2 = false;
+  LTTOHOSTILED3 = false;
+  LTTOHOSTILED4 = false;
 }
 
 //*************************************************************************
