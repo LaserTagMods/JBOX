@@ -3334,7 +3334,7 @@ void loop1(void *pvParameters) {
               DOMINATIONCLOCK = false;
               BASICDOMINATION = false;
               // ends the game for everyone
-              datapacket2 = 1400;
+              datapacket2 = 1410 + TeamID;
               datapacket1 = 99;
               BROADCASTESPNOW = true;
               Serial.println("A team has reached the goal, ending game");
@@ -3346,7 +3346,7 @@ void loop1(void *pvParameters) {
               DOMINATIONCLOCK = false;
               BASICDOMINATION = false;
               // ends the game for everyone
-              datapacket2 = 1400;
+              datapacket2 = 1410 + TeamID;
               datapacket1 = 99;
               BROADCASTESPNOW = true;
               Serial.println("A team has reached the goal, ending game");
