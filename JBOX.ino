@@ -158,6 +158,8 @@ int RequiredCapturableEmitterCounter = 10;
 bool FIVEMINUTEDOMINATION = false;
 bool TENMINUTEDOMINATION = false;
 bool FIVEMINUTETUGOWAR = false;
+int CurrentDominationLeader = 99;
+int PreviousDominationLeader = 99;
 
 long PreviousDominationClock = 0;
 
@@ -3187,7 +3189,33 @@ void AddPointToTeamWithPossession() {
       TeamScore[3]--;
     }
   }
+  // do a gained lead check to determin leader and previous leader and notify players:
+  if (TeamScore[0] > TeamScore[1] && TeamScore[0] > TeamScore[2] && TeamScore[0] > TeamScore[3]) {
+    // Team 0 is in the lead.
+    CurrentDominationLeader = 0;
+  }
+  if (TeamScore[1] > TeamScore[0] && TeamScore[1] > TeamScore[2] && TeamScore[1] > TeamScore[3]) {
+    // Team 0 is in the lead.
+    CurrentDominationLeader = 1;
+  }
+  if (TeamScore[2] > TeamScore[1] && TeamScore[2] > TeamScore[0] && TeamScore[2] > TeamScore[3]) {
+    // Team 0 is in the lead.
+    CurrentDominationLeader = 2;
+  }
+  if (TeamScore[3] > TeamScore[1] && TeamScore[3] > TeamScore[2] && TeamScore[3] > TeamScore[0]) {
+    // Team 0 is in the lead.
+    CurrentDominationLeader = 3;
+  }
+  if (CurrentDominationLeader != PreviousDominationLeader) { // We just had a change of score board leader
+    PreviousDominationLeader = CurrentDominationLeader; // reset the leader board with new leader
+    // Notifies players of leader change:
+    datapacket2 = 1410 + TeamID;
+    datapacket1 = 99;
+    BROADCASTESPNOW = true;
+    Serial.println("A team has reached the goal, ending game");
+  }
 }
+  
 void AddPointToPlayerWithPossession() {
   PlayerScore[PlayerID]++;
 }
