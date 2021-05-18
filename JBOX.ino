@@ -2150,39 +2150,25 @@ void pulseIR(long microsecs) {
   }
   sei();  // this turns them back on
 }
-void pulseLTTOIR(long microsecs) {
-  // we'll count down from the number of microseconds we are told to wait
-  cli();  // this turns off any background interrupts
-  while (microsecs > 0) {
-    // 38 kHz is about 13 microseconds high and 13 microseconds low
-    digitalWrite(IRledPin, HIGH);  // this takes about 3 microseconds to happen
-    delayMicroseconds(10);         // hang out for 10 microseconds, you can also change this to 9 if its not working
-    digitalWrite(IRledPin, LOW);   // this also takes about 3 microseconds
-    delayMicroseconds(10);         // hang out for 10 microseconds, you can also change this to 9 if its not working
-    // so 26 microseconds altogether
-    microsecs -= 26;
-  }
-  sei();  // this turns them back on
-}
 void SendLTTOIR() {
   Serial.println("Sending IR signal");
-  pulseLTTOIR(3000); // sync
+  pulseIR(3000); // sync
   delay(2); // delay
-  pulseLTTOIR(SyncLTTO); // sync
+  pulseIR(SyncLTTO); // sync
   delay(2); // delay
-  pulseLTTOIR(LTTOA[0]); // 
+  pulseIR(LTTOA[0]); // 
   delay(2); // delay
-  pulseLTTOIR(LTTOA[1]); // 
+  pulseIR(LTTOA[1]); // 
   delay(2); // delay
-  pulseLTTOIR(LTTOA[2]); // 
+  pulseIR(LTTOA[2]); // 
   delay(2); // delay
-  pulseLTTOIR(LTTOA[3]); // 
+  pulseIR(LTTOA[3]); // 
   delay(2); // delay
-  pulseLTTOIR(LTTOA[4]); // 
+  pulseIR(LTTOA[4]); // 
   delay(2); // delay
-  pulseLTTOIR(LTTOA[5]); // 
+  pulseIR(LTTOA[5]); // 
   delay(2); // delay
-  pulseLTTOIR(LTTOA[6]); // 
+  pulseIR(LTTOA[6]); // 
 }
 void SendIR() {
   Serial.println("Sending IR signal");
