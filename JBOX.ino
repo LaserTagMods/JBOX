@@ -3427,10 +3427,62 @@ void loop2(void *pvParameters) {
 void setup(){
   // Serial port for debugging purposes
   Serial.begin(115200);
-
+  Serial.println("Serial Monitor Started");
+  //***********************************************************************
+  // initialize the RGB pins
+  Serial.println("Initializing RGB Pins");
+  pinMode(red, OUTPUT);
+  pinMode(green, OUTPUT);
+  pinMode(blue, OUTPUT);
+  rgboff();
+  //***********************************************************************
+  // initialize piezo buzzer pin
+  Serial.println("Initializing Piezo Buzzer");
+  pinMode(buzzer, OUTPUT);
+  digitalWrite(buzzer, LOW);
+  //***********************************************************************
+  // initialize the IR digital pin as an output:
+  Serial.println("Initializing IR Output");
+  pinMode(IRledPin, OUTPUT);
+  //***********************************************************************
+  // initialize the IR receiver pin as an output:
+  Serial.println("Initializing IR Sensor");
+  pinMode(IR_Sensor_Pin, INPUT);
+  Serial.println("Ready to recieve BRX IR");
+  //***********************************************************************
+  // initialize LoRa Serial Comms and network settings:
+  Serial.println("Initializing LoRa");
+  Serial1.begin(115200, SERIAL_8N1, SERIAL1_RXPIN, SERIAL1_TXPIN); // setting up the LoRa pins
+  Serial1.print("AT\r\n"); // checking that serial is working with LoRa module
+  delay(100);
+  //Serial1.print("AT+PARAMETER=10,7,1,7\r\n");    //For Less than 3Kms
+  Serial1.print("AT+PARAMETER= 12,4,1,7\r\n");    //For More than 3Kms
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+BAND=868500000\r\n");    //Bandwidth set to 868.5MHz
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+ADDRESS=900\r\n");   //needs to be unique
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+NETWORKID=0\r\n");   //needs to be same for receiver and transmitter
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+PARAMETER?\r\n");    //For Less than 3Kms
+  delay(100); // 
+  Serial1.print("AT+BAND?\r\n");    //Bandwidth set to 868.5MHz
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+NETWORKID?\r\n");   //needs to be same for receiver and transmitter
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+ADDRESS?\r\n");   //needs to be unique
+  delay(100);   //wait for module to respond
+  pinMode(LED_BUILTIN, OUTPUT); // setting up the onboard LED to be used
+  digitalWrite(LED_BUILTIN, LOW); // turn off onboard led
+  digitalWrite(LED_BUILTIN, HIGH); // turn on onboard led
+  delay(500);
+  digitalWrite(LED_BUILTIN, LOW); // turn off onboard led
+  Serial.println("LoRa Module Initialized");
+  //***********************************************************************
+  // initialize blinking led onboard
   pinMode(ledPin, OUTPUT);
   digitalWrite(ledPin, LOW);
-  
+  //***********************************************************************
   // Connect to Wi-Fi
   Serial.println("Starting AP");
   WiFi.mode(WIFI_AP_STA);
@@ -3438,14 +3490,13 @@ void setup(){
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP address: ");
   Serial.println(IP);
-
+  //***********************************************************************
+  // initialize web server
   initWebSocket();
-
   // Route for root / web page
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", index_html, processor);
   });
-  
   // json events
     events.onConnect([](AsyncEventSourceClient *client){
       if(client->lastId()){
@@ -3456,16 +3507,16 @@ void setup(){
       client->send("hello!", NULL, millis(), 10000);
     });
     server.addHandler(&events);
-
   // Start server
   server.begin();
-
+  //***********************************************************************
   // Start ESP Now
   Serial.print("ESP Board MAC Address:  ");
   Serial.println(WiFi.macAddress());
   Serial.println("Starting ESPNOW");
   IntializeESPNOW();
-
+  //***********************************************************************
+  // initialize dual cores and dual loops
   Serial.println(xPortGetCoreID());
   xTaskCreatePinnedToCore(loop1, "loop1", 4096, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(loop2, "loop2", 4096, NULL, 1, NULL, 1);
