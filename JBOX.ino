@@ -32,6 +32,7 @@
  * 5/14/21    - Successfully integrated LTTO tags into the game so you cn select LTTO for domination game play as well.
  *            = Added in a check for Zone tags for LTTO
  *            - Added LTTO IR tags to send
+ * 5/18/21    - Fixed setup section to initialize all outputs
  * 
  * 
 */
@@ -2153,21 +2154,21 @@ void pulseIR(long microsecs) {
 void SendLTTOIR() {
   Serial.println("Sending IR signal");
   pulseIR(3000); // sync
-  delay(2); // delay
+  delayMicroseconds(2000); // delay
   pulseIR(SyncLTTO); // sync
-  delay(2); // delay
+  delayMicroseconds(2000); // delay
   pulseIR(LTTOA[0]); // 
-  delay(2); // delay
+  delayMicroseconds(2000); // delay
   pulseIR(LTTOA[1]); // 
-  delay(2); // delay
+  delayMicroseconds(2000); // delay
   pulseIR(LTTOA[2]); // 
-  delay(2); // delay
+  delayMicroseconds(2000); // delay
   pulseIR(LTTOA[3]); // 
-  delay(2); // delay
+  delayMicroseconds(2000); // delay
   pulseIR(LTTOA[4]); // 
-  delay(2); // delay
+  delayMicroseconds(2000); // delay
   pulseIR(LTTOA[5]); // 
-  delay(2); // delay
+  delayMicroseconds(2000); // delay
   pulseIR(LTTOA[6]); // 
 }
 void SendIR() {
