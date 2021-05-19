@@ -164,6 +164,7 @@ int PreviousDominationLeader = 99;
 long PreviousDominationClock = 0;
 
 bool BASICDOMINATION = true; // a default game mode
+bool CAPTURETHEFLAGMODE = false;
 bool DOMINATIONCLOCK = false;
 bool POSTDOMINATIONSCORETOBLYNK = false;
 bool CAPTURABLEEMITTER = false;
@@ -614,6 +615,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         <option value="5">5 Minute Domination</option>
         <option value="6">10 Minute Domination</option>
         <option value="7">5 Minute Tug of War</option>
+        <option value="8">Capture The Flag</option>
         <option value="2">Continuous IR Emitter</option>
         <option value="3">Tag Activated IR Emitter</option>
         <option value="4">Capturable Continuous IR Emitter</option>
@@ -927,6 +929,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       FIVEMINUTEDOMINATION = false;
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
+      CAPTURETHEFLAGMODE = false;
     }
     if (strcmp((char*)data, "2") == 0) {
       // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
@@ -950,6 +953,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       FIVEMINUTEDOMINATION = false;
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
+      CAPTURETHEFLAGMODE = false;
     }
     if (strcmp((char*)data, "3") == 0) {
       // Clears out any existing IR and Base Game Settings
@@ -971,6 +975,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       FIVEMINUTEDOMINATION = false;
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
+      CAPTURETHEFLAGMODE = false;
     }
     if (strcmp((char*)data, "4") == 0) {
       // Clears out existing settings
@@ -995,6 +1000,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       FIVEMINUTEDOMINATION = false;
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
+      CAPTURETHEFLAGMODE = false;
     }
     if (strcmp((char*)data, "5") == 0) {
       // 5 Minute domination mode that provides both player scoring and team scoring
@@ -1017,7 +1023,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       ENABLEIRRECEIVER = true;
       FIVEMINUTEDOMINATION = true;
       TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;  
+      FIVEMINUTETUGOWAR = false; 
+      CAPTURETHEFLAGMODE = false; 
     }
     if (strcmp((char*)data, "6") == 0) {
       // 10 Minute domination mode that provides both player scoring and team scoring
@@ -1041,6 +1048,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       FIVEMINUTEDOMINATION = false;
       TENMINUTEDOMINATION = true;
       FIVEMINUTETUGOWAR = false;
+      CAPTURETHEFLAGMODE = false;
     }
     if (strcmp((char*)data, "7") == 0) {
       // 5 Minute tug o war domination mode that provides both player scoring and team scoring
@@ -1064,6 +1072,31 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       FIVEMINUTEDOMINATION = true;
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = true;
+      CAPTURETHEFLAGMODE = false;
+    }
+    if (strcmp((char*)data, "8") == 0) {
+      // 5 Minute tug o war domination mode that provides both player scoring and team scoring
+      // Scoring reports over webserver to paired mobile device and refreshes every time
+      // the score changes. To deactivate, select this option a second time to pause
+      // the game/score. Recommended as a standalone base use only. Each time base is
+      // shot, the team or player who shot takes posession and the base emitts a tag
+      // that notifies player that the base (control point) was captured.
+      Serial.println("5 min Tug of War Domination Mode - Default!!!");
+      //debugmonitor.println("Basic Domination Mode - Default!!!");
+      Function = 1;
+      RGBWHITE = true;
+      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
+      DOMINATIONCLOCK = false; // stops the game from going if already running
+      BASICDOMINATION = false; // enables this game mode
+      ResetAllIRProtocols(); // resets all ir protocols
+      CONTROLPOINTCAPTURED = false; // enables control point captured call out
+      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
+      BASECONTINUOUSIRPULSE = false;
+      ENABLEIRRECEIVER = true;
+      FIVEMINUTEDOMINATION = true;
+      TENMINUTEDOMINATION = false;
+      FIVEMINUTETUGOWAR = false;
+      CAPTURETHEFLAGMODE = true;
     }
     if (strcmp((char*)data, "101") == 0) {
       ResetAllIRProtocols();
@@ -2004,6 +2037,26 @@ void receiveBRXir() {
         IDCritical();
         if (CAPTURABLEEMITTER) {
           ChangeBaseAlignment();
+        }
+        if (CAPTURETHEFLAGMODE) {
+          if (TeamID != Team) {
+            // this is not a friendly tag, flag has been captured
+            //sends the flag to player who shot base
+              datapacket2 = 31599;
+              datapacket1 = PlayerID;
+              BROADCASTESPNOW = true;
+          }
+          else {
+            if (ShotType == 4) {
+              // this is a flag being hung!
+              CAPTURETHEFLAGMODE = false;
+              // ends the game for everyone
+              datapacket2 = 1410 + TeamID;
+              datapacket1 = 99;
+              BROADCASTESPNOW = true;
+              Serial.println("A team has reached the goal, ending game");
+            }
+          }
         }
         if (BASICDOMINATION) {
           BasicDomination();
