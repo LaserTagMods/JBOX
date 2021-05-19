@@ -32,7 +32,6 @@
  * 5/14/21    - Successfully integrated LTTO tags into the game so you cn select LTTO for domination game play as well.
  *            = Added in a check for Zone tags for LTTO
  *            - Added LTTO IR tags to send
- * 5/18/21    - Fixed setup section to initialize all outputs
  * 
  * 
 */
@@ -220,10 +219,9 @@ bool ARMORBOOST = false;
 bool SHEILDS = false;
 bool LTTORESPAWN = false;
 bool LTTOOTZ = false;
-bool LTTOHOSTILED1 = false;
-bool LTTOHOSTILED2 = false;
-bool LTTOHOSTILED3 = false;
-bool LTTOHOSTILED4 = false;
+bool LTTOHOSTED = false;
+bool CUSTOMLTTOTAG = false;
+bool LTTOGG = false;
 
 //  CORE VARIABLE DELCARATIONS
 unsigned long core0previousMillis = 0;
@@ -272,6 +270,7 @@ int DLTTO[2];
 //int DamageID = 99;
 int LTTOTagType = 99;
 int GearMod = 0;
+int LTTODamage = 1;
 
 //*****************************************************************************************
 // ESP Now Objects:
@@ -637,14 +636,10 @@ const char index_html[] PROGMEM = R"rawliteral(
         <option value="113">Sheilds Boost</option>
         <option value="114">Own the Zone</option>
         <option value="115">Control Point Captured</option>
-        <option value="116">LTTO Respawn</option>
-        <option value="117">LTTO Own The Zone</option>
-        <option value="118">LTTO Hostile 1 Tag</option>
-        <option value="119">LTTO Hostile 2 Tags</option>
-        <option value="120">LTTO Hostile 3 Tags</option>
-        <option value="121">LTTO Hostile 4 Tags</option>
+        <option value="116">Customizable LTTO Tag(settings below)</option>
         </select>
-      </p><h2>Team Friendly/Alignment Settings</h2>
+      </p>
+      <h2>Team Friendly/Alignment Settings</h2>
       <p><select name="ammo" id="ammoid">
         <option value="201">Unspecified</option>
         <option value="202">Red/Alpha</option>
@@ -701,6 +696,29 @@ const char index_html[] PROGMEM = R"rawliteral(
         <option value="601">BRX</option>
         <option value="602">LTTO</option>
         <option value="603">Recoil - (coming soon)</option>
+        </select>
+      </p>
+      <h2>Customized LTTO Tag</h2>
+      <p><select name="lttotype" id="lttotypeid">
+        <option value="700">Select Custom LTTO Tag</option>
+        <option value="701">Hosted Game</option>
+        <option value="702">Grab & Go Game</option>
+        <option value="703">Respawn</option>
+        <option value="704">Own the Zone</option>
+        </select>
+        <select name="lttoteam" id="lttoteamid">
+        <option value="206">Select Team</option>
+        <option value="202">Solo</option>
+        <option value="203">Team 1</option>
+        <option value="204">Team 2</option>
+        <option value="205">Team 3</option>
+        </select>
+        <select name="lttodamage" id="lttodamageid">
+        <option value="t20">Tag Count</option>
+        <option value="t21">One</option>
+        <option value="t22">Two</option>
+        <option value="t23">Three</option>
+        <option value="t24">Four</option>
         </select>
       </p>
       <p><button id="gameover" class="button">End Game</button></p>
@@ -814,7 +832,9 @@ if (!!window.EventSource) {
     document.getElementById('ammoid').addEventListener('change', handleammo, false);
     document.getElementById('resetscores').addEventListener('click', toggle14s);
     document.getElementById('gameover').addEventListener('click', toggle14a);
-    
+    document.getElementById('lttoteamid').addEventListener('change', handlelttoteam, false);
+    document.getElementById('lttodamageid').addEventListener('change', handlelttodamage, false);
+    document.getElementById('lttotypeid').addEventListener('change', handlelttotype, false);
   }
   function toggle14s(){
     websocket.send('toggle14s');
@@ -850,8 +870,18 @@ if (!!window.EventSource) {
     var xl = document.getElementById("ammoid").value;
     websocket.send(xl);
   }
-
-
+  function handlelttoteam() {
+    var xm = document.getElementById("lttoteamid").value;
+    websocket.send(xm);
+  }
+  function handlelttodamage() {
+    var xn = document.getElementById("lttodamageid").value;
+    websocket.send(xn);
+  }
+  function handlelttotype() {
+    var xo = document.getElementById("lttotypeid").value;
+    websocket.send(xo);
+  }
 </script>
 </body>
 </html>
@@ -1127,38 +1157,31 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     }
     if (strcmp((char*)data, "116") == 0) {
       ResetAllIRProtocols();
-      LTTORESPAWN = true;
-      Serial.println("LTTO Respawns Enabled!!!");
+      CUSTOMLTTOTAG = true;
+      Serial.println("LTTO Customizer Enabled!!!");
+    }
+    if (strcmp((char*)data, "t21") == 0) {
+      //ResetAllIRProtocols();
+      LTTODamage = 1;
+      Serial.println("Tags set to 1!!!");
       //debugmonitor.println("Control Point Captured Enabled!!!");
     }
-    if (strcmp((char*)data, "117") == 0) {
-      ResetAllIRProtocols();
-      LTTOOTZ = true;
-      Serial.println("LTTO Own The Zone!!!");
+    if (strcmp((char*)data, "t22") == 0) {
+      //ResetAllIRProtocols();
+      LTTODamage = 1;
+      Serial.println("Tags set to 2!!!");
       //debugmonitor.println("Control Point Captured Enabled!!!");
     }
-    if (strcmp((char*)data, "118") == 0) {
-      ResetAllIRProtocols();
-      LTTOHOSTILED1 = true;
-      Serial.println("Hostile single Tag!!!");
+    if (strcmp((char*)data, "t23") == 0) {
+      //ResetAllIRProtocols();
+      LTTODamage = 1;
+      Serial.println("Tags set to 3!!!");
       //debugmonitor.println("Control Point Captured Enabled!!!");
     }
-    if (strcmp((char*)data, "119") == 0) {
-      ResetAllIRProtocols();
-      LTTOHOSTILED2 = true;
-      Serial.println("Hostile double tag!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (strcmp((char*)data, "120") == 0) {
-      ResetAllIRProtocols();
-      LTTOHOSTILED3 = true;
-      Serial.println("Hostile triple tag!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (strcmp((char*)data, "121") == 0) {
-      ResetAllIRProtocols();
-      LTTOHOSTILED4 = true;
-      Serial.println("Hostile quad tag!!!");
+    if (strcmp((char*)data, "t24") == 0) {
+      //ResetAllIRProtocols();
+      LTTODamage = 1;
+      Serial.println("Tags set to 4!!!");
       //debugmonitor.println("Control Point Captured Enabled!!!");
     }
     if (strcmp((char*)data, "201") == 0) {
@@ -1375,6 +1398,51 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     }
     if (strcmp((char*)data, "603") == 0) {
       Serial.println("Recoil Mode");
+    }
+    if (strcmp((char*)data, "700") == 0) {
+      //ResetAllIRProtocols();
+      LTTOOTZ = false;
+      LTTORESPAWN = false;
+      LTTOHOSTED = false;
+      LTTOGG = false;
+      Serial.println("Hosted Tag!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
+    }
+    if (strcmp((char*)data, "701") == 0) {
+      //ResetAllIRProtocols();
+      LTTOOTZ = false;
+      LTTORESPAWN = false;
+      LTTOHOSTED = true;
+      LTTOGG = false;
+      Serial.println("Hosted Tag!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
+    }
+    if (strcmp((char*)data, "702") == 0) {
+      //ResetAllIRProtocols();
+      LTTOOTZ = false;
+      LTTORESPAWN = false;
+      LTTOHOSTED = false;
+      LTTOGG = true;
+      Serial.println("G&G Tag!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
+    }
+    if (strcmp((char*)data, "703") == 0) {
+      //ResetAllIRProtocols();
+      LTTOOTZ = false;
+      LTTORESPAWN = true;
+      LTTOHOSTED = false;
+      LTTOGG = false;
+      Serial.println("LTTO Respawns Enabled!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
+    }
+    if (strcmp((char*)data, "704") == 0) {
+      //ResetAllIRProtocols();
+      LTTOOTZ = true;
+      LTTORESPAWN = false;
+      LTTOHOSTED = false;
+      LTTOGG = false;
+      Serial.println("LTTO Own The Zone!!!");
+      //debugmonitor.println("Control Point Captured Enabled!!!");
     }
   }
 }
@@ -2154,14 +2222,14 @@ void pulseIR(long microsecs) {
 void SendLTTOIR() {
   Serial.println("Sending IR signal");
   pulseIR(3000); // sync
-  delayMicroseconds(2000); // delay
+  delayMicroseconds(6000); // delay
   pulseIR(SyncLTTO); // sync
   delayMicroseconds(2000); // delay
   pulseIR(LTTOA[0]); // 
   delayMicroseconds(2000); // delay
   pulseIR(LTTOA[1]); // 
   delayMicroseconds(2000); // delay
-  pulseIR(LTTOA[2]); // 
+  pulseIR(LTTOA[2]); //
   delayMicroseconds(2000); // delay
   pulseIR(LTTOA[3]); // 
   delayMicroseconds(2000); // delay
@@ -2225,133 +2293,95 @@ void SendIR() {
   delayMicroseconds(500); // delay
   pulseIR(Z[1]); // Z1
 }
-void LTTORespawn(){
-  SyncLTTO = 6000;
-  LTTOA[0] = 1000;
-  LTTOA[1] = 1000;
-  LTTOA[2] = 1000;
-  LTTOA[3] = 2000;
-  LTTOA[4] = 2000;
-  LTTOA[5] = 0;
-  LTTOA[6] = 0;
-  SendLTTOIR();
-  Serial.println("Sent LTTO Tag - Respawn");
-}
-void LTTOotz(){
-  SyncLTTO = 6000;
-  LTTOA[0] = 1000;
-  LTTOA[1] = 1000;
-  LTTOA[2] = 1000;
-  LTTOA[3] = 2000;
-  LTTOA[4] = 1000;
-  LTTOA[5] = 0000;
-  LTTOA[6] = 0000;
-  SendLTTOIR();
-  Serial.println("Sent LTTO Tag - OTZ");
-}
-void LTTOHostileD1(){
-  SyncLTTO = 3000;
-  LTTOA[0] = 1000;
-  LTTOA[1] = 1000;
-  LTTOA[2] = 2000;
-  if (Team == 0) {
-    LTTOA[3] = 1000;
-    LTTOA[4] = 1000;
-  }
-  if (Team == 1) {
-    LTTOA[3] = 1000;
-    LTTOA[4] = 2000;
-  }
-  if (Team == 2) {
-    LTTOA[3] = 2000;
-    LTTOA[4] = 1000;
-  }
-  if (Team == 3) {
+void CustomLTTOTag() {
+  if (LTTORESPAWN) {
+    SyncLTTO = 6000;
+    LTTOA[0] = 1000;
+    LTTOA[1] = 1000;
+    LTTOA[2] = 1000;
     LTTOA[3] = 2000;
     LTTOA[4] = 2000;
+    LTTOA[5] = 0;
+    LTTOA[6] = 0;
+    SendLTTOIR();
+    Serial.println("Sent LTTO Tag - Respawn");
   }
-  LTTOA[5] = 1000;
-  LTTOA[6] = 1000;
-  SendLTTOIR();
-  Serial.println("Sent LTTO Tag - Hostile D1");
-}
-void LTTOHostileD2(){
-  SyncLTTO = 3000;
-  LTTOA[0] = 1000;
-  LTTOA[1] = 1000;
-  LTTOA[2] = 2000;
-  if (Team == 0) {
-    LTTOA[3] = 1000;
-    LTTOA[4] = 1000;
-  }
-  if (Team == 1) {
-    LTTOA[3] = 1000;
-    LTTOA[4] = 2000;
-  }
-  if (Team == 2) {
+  if (LTTOOTZ) {
+    SyncLTTO = 6000;
+    LTTOA[0] = 1000;
+    LTTOA[1] = 1000;
+    LTTOA[2] = 1000;
     LTTOA[3] = 2000;
     LTTOA[4] = 1000;
+    LTTOA[5] = 0000;
+    LTTOA[6] = 0000;
+    SendLTTOIR();
+    Serial.println("Sent LTTO Tag - OTZ");
   }
-  if (Team == 3) {
-    LTTOA[3] = 2000;
-    LTTOA[4] = 2000;
+  if (LTTOGG) {
+    SyncLTTO = 3000;
+    LTTOA[0] = 1000;
+    LTTOA[1] = 1000;
+    LTTOA[2] = 1000;
+    if (Team == 0) {
+      LTTOA[3] = 1000;
+      LTTOA[4] = 1000;
+    }
+    if (Team == 1) {
+      LTTOA[3] = 1000;
+      LTTOA[4] = 2000;
+    }
+    if (Team == 2) {
+      LTTOA[3] = 2000;
+      LTTOA[4] = 1000;
+    }
+    if (Team == 3) {
+      LTTOA[3] = 2000;
+      LTTOA[4] = 2000;
+    }
+    if (LTTODamage == 1) {
+      LTTOA[5] = 1000;
+      LTTOA[6] = 1000;
+    }
+    if (LTTODamage == 2) {
+      LTTOA[5] = 1000;
+      LTTOA[6] = 2000;
+    }
+    if (LTTODamage == 3) {
+      LTTOA[5] = 2000;
+      LTTOA[6] = 1000;
+    }
+    if (LTTODamage == 4) {
+      LTTOA[5] = 2000;
+      LTTOA[6] = 2000;
+    }
+    SendLTTOIR();
+    Serial.println("Sent LTTO Tag - G&G");
   }
-  LTTOA[5] = 1000;
-  LTTOA[6] = 2000;
-  SendLTTOIR();
-  Serial.println("Sent LTTO Tag - Hostile D2");
-}
-void LTTOHostileD3(){
-  SyncLTTO = 3000;
-  LTTOA[0] = 1000;
-  LTTOA[1] = 1000;
-  LTTOA[2] = 2000;
-  if (Team == 0) {
-    LTTOA[3] = 1000;
-    LTTOA[4] = 1000;
+  if (LTTOHOSTED) {
+    SyncLTTO = 3000;
+    LTTOA[0] = 1000;
+    LTTOA[1] = 1000;
+    LTTOA[2] = 2000;
+    if (Team == 0) {
+      LTTOA[3] = 1000;
+      LTTOA[4] = 1000;
+    }
+    if (Team == 1) {
+      LTTOA[3] = 1000;
+      LTTOA[4] = 2000;
+    }
+    if (Team == 2) {
+      LTTOA[3] = 2000;
+      LTTOA[4] = 1000;
+    }
+    if (Team == 3) {
+      LTTOA[3] = 2000;
+      LTTOA[4] = 2000;
+    }
+    SendLTTOIR();
+    Serial.println("Sent LTTO Tag - Hostile");
   }
-  if (Team == 1) {
-    LTTOA[3] = 1000;
-    LTTOA[4] = 2000;
-  }
-  if (Team == 2) {
-    LTTOA[3] = 2000;
-    LTTOA[4] = 1000;
-  }
-  if (Team == 3) {
-    LTTOA[3] = 2000;
-    LTTOA[4] = 2000;
-  }
-  LTTOA[5] = 2000;
-  LTTOA[6] = 1000;
-  SendLTTOIR();
-  Serial.println("Sent LTTO Tag - Hostile D3");
-}
-void LTTOHostileD4(){
-  SyncLTTO = 3000;
-  LTTOA[0] = 1000;
-  LTTOA[1] = 1000;
-  LTTOA[2] = 2000;
-  if (Team == 0) {
-    LTTOA[3] = 1000;
-    LTTOA[4] = 1000;
-  }
-  if (Team == 1) {
-    LTTOA[3] = 1000;
-    LTTOA[4] = 2000;
-  }
-  if (Team == 2) {
-    LTTOA[3] = 2000;
-    LTTOA[4] = 1000;
-  }
-  if (Team == 3) {
-    LTTOA[3] = 2000;
-    LTTOA[4] = 2000;
-  }
-  LTTOA[5] = 2000;
-  LTTOA[6] = 2000;
-  SendLTTOIR();
-  Serial.println("Sent LTTO Tag - Hostile D4");
 }
 void Sheilds() { // not set properly yet
   BulletType = 15;
@@ -3084,29 +3114,8 @@ void VerifyCurrentIRTagSelection() {
   if (CONTROLPOINTCAPTURED) {
     ControlPointCaptured();
   }
-  if (OWNTHEZONE) {
-    OwnTheZone();
-  }
-  if (HITTAG) {
-    HitTag();
-  }
-  if (LTTORESPAWN) {
-    LTTORespawn();
-  }
-  if (LTTOOTZ) {
-    LTTOotz();
-  }
-  if (LTTOHOSTILED1) {
-    LTTOHostileD1();
-  }
-  if (LTTOHOSTILED2) {
-    LTTOHostileD2();
-  }
-  if (LTTOHOSTILED3) {
-    LTTOHostileD3();
-  }
-  if (LTTOHOSTILED4) {
-    LTTOHostileD4();
+  if (CUSTOMLTTOTAG) {
+    CustomLTTOTag();
   }
   if (MOTIONSENSOR) {
     MotionSensor();
@@ -3131,12 +3140,7 @@ void ResetAllIRProtocols() {
   LOOTBOX = false;
   ARMORBOOST = false;
   SHEILDS = false;
-  LTTORESPAWN = false;
-  LTTOOTZ = false;
-  LTTOHOSTILED1 = false;
-  LTTOHOSTILED2 = false;
-  LTTOHOSTILED3 = false;
-  LTTOHOSTILED4 = false;
+  CUSTOMLTTOTAG = false;
 }
 
 //*************************************************************************
@@ -3277,11 +3281,11 @@ void loop1(void *pvParameters) {
     //**************************************************************************************
     // RGB main functions: 
     if (currentMillis0 - rgbpreviousMillis >= rgbinterval) {
-        rgbpreviousMillis = currentMillis0;
-        rgbblink();
-        if (RGBDEMOMODE) {
-          changergbcolor();
-        }
+      rgbpreviousMillis = currentMillis0;
+      rgbblink();
+      if (RGBDEMOMODE) {
+        changergbcolor();
+      }
     }
     //**************************************************************************************
     // IR LED main functions: 
