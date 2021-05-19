@@ -51,7 +51,36 @@ Scoring reports over BLE to paired mobile device and refreshes every time
 the score changes. To deactivate, select this option a second time to pause
 the game/score. Recommended as a standalone base use only. Each time base is
 shot, the team or player who shot takes posession and the base emitts a tag
-that notifies player that the base (control point) was captured.
+that notifies player that the base (control point) was captured. Espnow for
+Modded taggers allows for notification for who is in the lead as well as when
+A team is 30 points/seconds away from winning.
+
+Domination Game Mode (with limits)
+---------------------------
+Same as basic domination except if you are using JEDGE modded taggers, when
+The score limit is met, the base will send an espnow message to tagger in
+Proximity which they will relay to other taggers that the game is over and
+The winning team will change colors to indicate who is the victor.
+
+Domination tug of war
+---------------------------
+Same as Domination with limits, except that when a team has the base captured
+It reduces the enemies score as well, making it a tug of war
+
+Capture the Flag
+---------------------------
+Only working for JEDGE currently. One base set for each team. Blue team places
+or hides their base and other team(s) do the same. When an enemy team shoots
+your base, the player who shot it vm becomes the flag carrier. His weapon turns
+To the flag/pole, which is a melee attack only, using the trigger button. He 
+must return to his own base without being killed and shoot his base with his
+Headset(melee) and then the game is over. I might add in team elimination too,
+Later to where the team that has their flag stolen is out and the remaining 
+teams stay in the mix. (Not done yet, need to further test this mode as is.)
+Currently the team that captures the base wins and it is game over. There are built
+In espnow comms that announce to players in the vicinity only, not all players out
+Of range who wouldn't hear an alarm, that the flag was captured and that your team
+Has either captured the flag or lost the flag.
 
 Cointinuous IR Emitter:
 -----------------------
