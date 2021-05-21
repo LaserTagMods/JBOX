@@ -1081,7 +1081,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       // the game/score. Recommended as a standalone base use only. Each time base is
       // shot, the team or player who shot takes posession and the base emitts a tag
       // that notifies player that the base (control point) was captured.
-      Serial.println("5 min Tug of War Domination Mode - Default!!!");
+      Serial.println("Capture the flag mode!!!");
       //debugmonitor.println("Basic Domination Mode - Default!!!");
       Function = 1;
       RGBWHITE = true;
@@ -2042,6 +2042,7 @@ void receiveBRXir() {
           if (TeamID != Team) {
             // this is not a friendly tag, flag has been captured
             //sends the flag to player who shot base
+            Serial.println("Flag captured");
               datapacket2 = 31599;
               datapacket1 = PlayerID;
               BROADCASTESPNOW = true;
@@ -3253,7 +3254,7 @@ void AddPointToTeamWithPossession() {
   if (CurrentDominationLeader != PreviousDominationLeader) { // We just had a change of score board leader
     PreviousDominationLeader = CurrentDominationLeader; // reset the leader board with new leader
     // Notifies players of leader change:
-    datapacket2 = 1410 + TeamID;
+    datapacket2 = 1420 + TeamID;
     datapacket1 = 99;
     BROADCASTESPNOW = true;
     Serial.println("A team has reached the goal, ending game");
@@ -3411,6 +3412,16 @@ void loop1(void *pvParameters) {
               BROADCASTESPNOW = true;
               Serial.println("A team has reached the goal, ending game");
             }
+            if (TeamScore[0] == 270 || TeamScore[1] == 270 || TeamScore[2] == 270 || TeamScore[3] == 270) {
+              // one team has 4.5 minutes
+              //DOMINATIONCLOCK = false;
+              //BASICDOMINATION = false;
+              // ends the game for everyone
+              datapacket2 = 1430 + TeamID;
+              datapacket1 = 99;
+              BROADCASTESPNOW = true;
+              Serial.println("A team has reached the goal, ending game");
+            }
           }
           if (TENMINUTEDOMINATION) {
             if (TeamScore[0] > 600 || TeamScore[1] > 600 || TeamScore[2] > 600 || TeamScore[3] > 600) {
@@ -3419,6 +3430,16 @@ void loop1(void *pvParameters) {
               BASICDOMINATION = false;
               // ends the game for everyone
               datapacket2 = 1410 + TeamID;
+              datapacket1 = 99;
+              BROADCASTESPNOW = true;
+              Serial.println("A team has reached the goal, ending game");
+            }
+            if (TeamScore[0] == 570 || TeamScore[1] == 570 || TeamScore[2] == 570 || TeamScore[3] == 570) {
+              // one team has 9.5 minutes
+              //DOMINATIONCLOCK = false;
+              //BASICDOMINATION = false;
+              // ends the game for everyone
+              datapacket2 = 1430 + TeamID;
               datapacket1 = 99;
               BROADCASTESPNOW = true;
               Serial.println("A team has reached the goal, ending game");
