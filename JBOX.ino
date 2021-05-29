@@ -368,7 +368,7 @@ void getReadings(){
 }
 
 void ResetReadings() {
-  datapacket1 = 99; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
+  //datapacket1 = 99; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
   datapacket2 = 32700; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
   datapacket3 = JBOXID; // From - device ID
   datapacket4 = "null";
@@ -923,18 +923,32 @@ void notifyClients1() {
 }
 
 void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
+  Serial.println("handling websocket message");
   AwsFrameInfo *info = (AwsFrameInfo*)arg;
   if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
     data[len] = 0;
     if (strcmp((char*)data, "toggle14s") == 0) { // game reset
-      ResetScores();
-    }if (strcmp((char*)data, "toggle14a") == 0) { // game end
-      DOMINATIONCLOCK = false;
-      UpdateWebApp0();
-      UpdateWebApp2();
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
+        ResetScores();
+      }
+      if (DeviceSelector != JBOXID) {
+        datapacket2 = 10801;
+        BROADCASTESPNOW = true;
+      }
+    }
+    if (strcmp((char*)data, "toggle14a") == 0) { // game end
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
+        DOMINATIONCLOCK = false;
+        UpdateWebApp0();
+        UpdateWebApp2();
+      }
+      if (DeviceSelector != JBOXID) {
+        datapacket2 = 10802;
+        BROADCASTESPNOW = true;
+      }
     }
     if (strcmp((char*)data, "1") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // default domination mode that provides both player scoring and team scoring
       // Scoring reports over BLE to paired mobile device and refreshes every time
       // the score changes. To deactivate, select this option a second time to pause
@@ -957,14 +971,15 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
-      } else {
+      MULTIBASEDOMINATION = false;
+      }
+      if (DeviceSelector != JBOXID) {
         datapacket2 = 10001;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "2") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
       // Then activates a default interval spaced broadcast of a tag of choice.
       // The tag of choice will need to be selected otherwise motion sensor is broadcasted.
@@ -987,14 +1002,14 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
-      } else {
+      MULTIBASEDOMINATION = false;
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10002;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "3") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // Clears out any existing IR and Base Game Settings
       // Sets Default for tag activation to send an IR emitter protocol for "motion sensor" as default
       // 
@@ -1015,14 +1030,14 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
-      } else {
+      MULTIBASEDOMINATION = false;
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10003;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "4") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // Clears out existing settings
       // Sets default Continuous Emitter Tag to Respwan Station As Default
       // Creates A Counter for Capturability by Shots (default is 10, change default to desired count) 
@@ -1046,14 +1061,14 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
-      } else {
+      MULTIBASEDOMINATION = false;
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10004;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "5") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // 5 Minute domination mode that provides both player scoring and team scoring
       // Scoring reports over webserver to paired mobile device and refreshes every time
       // the score changes. To deactivate, select this option a second time to pause
@@ -1076,14 +1091,14 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false; 
       CAPTURETHEFLAGMODE = false; 
-      MULTIBASEDOMINATION = true;
-      } else {
+      MULTIBASEDOMINATION = false;
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10005;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "6") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // 10 Minute domination mode that provides both player scoring and team scoring
       // Scoring reports over webserver to paired mobile device and refreshes every time
       // the score changes. To deactivate, select this option a second time to pause
@@ -1106,14 +1121,14 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       TENMINUTEDOMINATION = true;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
-      } else {
+      MULTIBASEDOMINATION = false;
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10006;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "7") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // 5 Minute tug o war domination mode that provides both player scoring and team scoring
       // Scoring reports over webserver to paired mobile device and refreshes every time
       // the score changes. To deactivate, select this option a second time to pause
@@ -1136,14 +1151,14 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = true;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
-      } else {
+      MULTIBASEDOMINATION = false;
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10007;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "8") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // 5 Minute tug o war domination mode that provides both player scoring and team scoring
       // Scoring reports over webserver to paired mobile device and refreshes every time
       // the score changes. To deactivate, select this option a second time to pause
@@ -1166,14 +1181,14 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = true;
-      MULTIBASEDOMINATION = true;
-      } else {
+      MULTIBASEDOMINATION = false;
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10008;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "9") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // 10 Minute domination mode that provides both player scoring and team scoring
       // Scoring reports over webserver to paired mobile device and refreshes every time
       // the score changes. To deactivate, select this option a second time to pause
@@ -1197,7 +1212,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = false;
       MULTIBASEDOMINATION = true;
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10009;
         BROADCASTESPNOW = true;
       }
@@ -1205,668 +1220,668 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
 
     
     if (strcmp((char*)data, "101") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       MOTIONSENSOR = true;
       Serial.println("Motion Sensor Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10101;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "102") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       CAPTURETHEFLAG = true;
       Serial.println("Capture the Flag Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10102;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "103") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       CONTROLPOINTLOST = true;
       Serial.println("Control Point Lost Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10103;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "104") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       GASGRENADE = true;
       Serial.println("Gas Grenade Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10104;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "105") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       LIGHTDAMAGE = true;
       Serial.println("Light Damage Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10105;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "106") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       MEDIUMDAMAGE = true;
       Serial.println("Medium Damage Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10106;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "107") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       HEAVYDAMAGE = true;
       Serial.println("Heavy Damage Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10107;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "108") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       FRAG = true;
       Serial.println("Explosive Damage Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10108;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "109") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       RESPAWNSTATION = true;
       Serial.println("Respawn Station Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10109;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "110") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       MEDKIT = true;
       Serial.println("Medkit Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10110;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "112") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       ARMORBOOST = true;
       Serial.println("Armor Boost Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10112;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "113") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       SHEILDS = true;
       Serial.println("Sheilds Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10113;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "111") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       LOOTBOX = true;
       Serial.println("Loot Box Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10111;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "114") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       OWNTHEZONE = true;
       Serial.println("Own The Zone Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10114;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "115") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       CONTROLPOINTCAPTURED = true;
       Serial.println("Control Point Captured Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10115;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "116") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       CUSTOMLTTOTAG = true;
       Serial.println("LTTO Customizer Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10116;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "t21") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTODamage = 1;
       Serial.println("Tags set to 1!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10151;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "t22") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTODamage = 1;
       Serial.println("Tags set to 2!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10152;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "t23") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTODamage = 1;
       Serial.println("Tags set to 3!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10153;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "t24") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTODamage = 1;
       Serial.println("Tags set to 4!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10154;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "201") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Team = 2;
       RGBWHITE = true;
       Serial.println("Team Set to Nuetral!!!");
       // debugmonitor.println("Team Set to Nuetral!!!");
       ANYTEAM = true;
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10201;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "202") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Team = 0;
       RGBRED = true;
       Serial.println("Team Set to Red!!!");
       //debugmonitor.println("Team Set to Red!!!");
       ANYTEAM = false;
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10202;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "203") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Team = 1;
       RGBBLUE = true;
       Serial.println("Team Set to Blue!!!");
       //debugmonitor.println("Team Set to Red!!!");
       ANYTEAM = false;
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10203;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "204") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Team = 2;
       RGBYELLOW = true;
       Serial.println("Team Set to Yellow!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10204;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "205") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Team = 3;
       RGBGREEN = true;
       Serial.println("Team Set to Green!!!");
       //debugmonitor.println("Team Set to Green!!!");
       ANYTEAM = false;
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10205;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "301") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 1000;
       Serial.println(irledinterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10301;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "302") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 2000;
       Serial.println(irledinterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10302;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "303") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 3000;
       Serial.println(irledinterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10303;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "304") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 5000;
       Serial.println(irledinterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10304;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "305") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 10000;
       Serial.println(irledinterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10305;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "306") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 15000;
       Serial.println(irledinterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10306;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "307") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 30000;
       Serial.println(irledinterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10307;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "308") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 60000;
       Serial.println(irledinterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10308;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "401") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = false;
     Serial.println("Cool Down Deactivated"); 
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10401;
         BROADCASTESPNOW = true;
       } 
     }
     if (strcmp((char*)data, "402") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 5000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10402;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "403") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 10000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10403;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "404") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 15000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10404;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "405") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 30000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10405;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "406") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 60000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10406;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "407") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 120000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10407;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "408") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 180000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10408;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "409") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 300000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10409;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "410") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 600000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10410;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "411") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 900000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10411;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "412") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 1200000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10412;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "413") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 1800000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10413;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "501") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 1;
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10501;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "502") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 10;
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10502;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "503") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 15;
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10503;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "504") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 30;
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10504;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "505") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 60;
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10505;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "506") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 100;
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10506;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "507") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 150;
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10507;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "508") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 300;
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10508;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "509") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 500;
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10509;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "510") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 1000;
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10510;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "601") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Serial.println("BRX Mode");
       GearMod = 0;
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10601;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "602") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Serial.println("LTTO Mode");
       GearMod = 1;
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10602;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "603") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Serial.println("Recoil Mode");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10603;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "700") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTOOTZ = false;
       LTTORESPAWN = false;
       LTTOHOSTED = false;
       LTTOGG = false;
       Serial.println("Hosted Tag!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10700;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "701") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTOOTZ = false;
       LTTORESPAWN = false;
       LTTOHOSTED = true;
       LTTOGG = false;
       Serial.println("Hosted Tag!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10701;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "702") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTOOTZ = false;
       LTTORESPAWN = false;
       LTTOHOSTED = false;
       LTTOGG = true;
       Serial.println("G&G Tag!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10702;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "703") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTOOTZ = false;
       LTTORESPAWN = true;
       LTTOHOSTED = false;
       LTTOGG = false;
       Serial.println("LTTO Respawns Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10703;
         BROADCASTESPNOW = true;
       }
     }
     if (strcmp((char*)data, "704") == 0) {
-      if (DeviceSelector == JBOXID) {
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTOOTZ = true;
       LTTORESPAWN = false;
@@ -1874,7 +1889,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       LTTOGG = false;
       Serial.println("LTTO Own The Zone!!!");
       //debugmonitor.println("Control Point Captured Enabled!!!");
-      } else {
+      }if (DeviceSelector != JBOXID) {
         datapacket2 = 10704;
         BROADCASTESPNOW = true;
       }
@@ -2007,7 +2022,7 @@ void ProcessIncomingCommands() {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
+      MULTIBASEDOMINATION = false;
     }
     if (incomingData2  ==  10002) {
       // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
@@ -2032,7 +2047,7 @@ void ProcessIncomingCommands() {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
+      MULTIBASEDOMINATION = false;
     }
     if (incomingData2  ==  10003) {
       // Clears out any existing IR and Base Game Settings
@@ -2055,7 +2070,7 @@ void ProcessIncomingCommands() {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
+      MULTIBASEDOMINATION = false;
     }
     if (incomingData2  ==  10004) {
       // Clears out existing settings
@@ -2081,7 +2096,7 @@ void ProcessIncomingCommands() {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
+      MULTIBASEDOMINATION = false;
     }
     if (incomingData2  ==  10005) {
       // 5 Minute domination mode that provides both player scoring and team scoring
@@ -2106,7 +2121,7 @@ void ProcessIncomingCommands() {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false; 
       CAPTURETHEFLAGMODE = false; 
-      MULTIBASEDOMINATION = true;
+      MULTIBASEDOMINATION = false;
     }
     if (incomingData2  ==  10006) {
       // 10 Minute domination mode that provides both player scoring and team scoring
@@ -2131,7 +2146,7 @@ void ProcessIncomingCommands() {
       TENMINUTEDOMINATION = true;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
+      MULTIBASEDOMINATION = false;
     }
     if (incomingData2  ==  10007) {
       // 5 Minute tug o war domination mode that provides both player scoring and team scoring
@@ -2156,7 +2171,7 @@ void ProcessIncomingCommands() {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = true;
       CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
+      MULTIBASEDOMINATION = false;
     }
     if (incomingData2  ==  10008) {
       // 5 Minute tug o war domination mode that provides both player scoring and team scoring
@@ -2181,7 +2196,7 @@ void ProcessIncomingCommands() {
       TENMINUTEDOMINATION = false;
       FIVEMINUTETUGOWAR = false;
       CAPTURETHEFLAGMODE = true;
-      MULTIBASEDOMINATION = true;
+      MULTIBASEDOMINATION = false;
     }
     if (incomingData2  ==  10009) {
       // 10 Minute domination mode that provides both player scoring and team scoring
@@ -2586,7 +2601,19 @@ void ProcessIncomingCommands() {
       LTTOGG = false;
       Serial.println("LTTO Own The Zone!!!");
       //debugmonitor.println("Control Point Captured Enabled!!!");
-    }    
+    }
+    if (incomingData2  ==  10801) {
+      // game reset
+      ResetScores();
+      Serial.println("Resetting Scores");
+    }
+    if (incomingData2  ==  10802) {
+      // Game End
+      DOMINATIONCLOCK = false;
+      UpdateWebApp0();
+      UpdateWebApp2();
+      Serial.println("Game Over");
+    }
     if (incomingData2 < 1000 && incomingData2 > 900) { // Syncing scores
       //int b = incomingData2 - 900;
       //if (b == 2) { // this is an incoming score from a player!
