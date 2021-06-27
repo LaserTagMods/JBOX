@@ -33,6 +33,7 @@
  *            = Added in a check for Zone tags for LTTO
  *            - Added LTTO IR tags to send
  * 5/28/21    - Added in ability to program all JBOXes from one JBOX
+ * 6/27/21    - Added in state save for settings so on reset, settings are retained.
  * 
  * 
 */
@@ -48,6 +49,10 @@
 #include <esp_wifi.h> // needed for resetting the mac address
 #include <Arduino_JSON.h>
 #include <HardwareSerial.h> // used for setting up the serial communications on non RX/TX pins
+#include <EEPROM.h> // used for storing data even after reset, in flash/eeprom memory
+
+// define the number of bytes I'm using/accessing for eeprom
+#define EEPROM_SIZE 11
 
 // serial definitions for LoRa
 #define SERIAL1_RXPIN 19 // TO LORA TX
@@ -57,11 +62,11 @@
 //******************** DEVICE SPECIFIC DEFINITIONS ************************
 //*************************************************************************
 // These should be modified as applicable for your needs
-int JBOXID = 100; // this is the gun or player ID, each esp32 needs a different one, set "0-63"
+int JBOXID = 105; // this is the gun or player ID, each esp32 needs a different one, set "0-63"
 int DeviceSelector = JBOXID;
 int TaggersOwned = 64; // how many taggers do you own or will play?
 // Replace with your network credentials
-const char* ssid = "JBOX#00";
+const char* ssid = "JBOX#105";
 const char* password = "123456789";
 
 
@@ -949,6 +954,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     }
     if (strcmp((char*)data, "1") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
+      EEPROM.write(1, 1);
+      EEPROM.commit();
       // default domination mode that provides both player scoring and team scoring
       // Scoring reports over BLE to paired mobile device and refreshes every time
       // the score changes. To deactivate, select this option a second time to pause
@@ -979,6 +986,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "2") == 0) {
+      EEPROM.write(1, 2);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
       // Then activates a default interval spaced broadcast of a tag of choice.
@@ -1009,6 +1018,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "3") == 0) {
+      EEPROM.write(1, 3);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // Clears out any existing IR and Base Game Settings
       // Sets Default for tag activation to send an IR emitter protocol for "motion sensor" as default
@@ -1037,6 +1048,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "4") == 0) {
+      EEPROM.write(1, 4);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // Clears out existing settings
       // Sets default Continuous Emitter Tag to Respwan Station As Default
@@ -1068,6 +1081,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "5") == 0) {
+      EEPROM.write(1, 5);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // 5 Minute domination mode that provides both player scoring and team scoring
       // Scoring reports over webserver to paired mobile device and refreshes every time
@@ -1098,6 +1113,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "6") == 0) {
+      EEPROM.write(1, 6);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // 10 Minute domination mode that provides both player scoring and team scoring
       // Scoring reports over webserver to paired mobile device and refreshes every time
@@ -1128,6 +1145,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "7") == 0) {
+      EEPROM.write(1, 7);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // 5 Minute tug o war domination mode that provides both player scoring and team scoring
       // Scoring reports over webserver to paired mobile device and refreshes every time
@@ -1158,6 +1177,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "8") == 0) {
+      EEPROM.write(1, 8);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // 5 Minute tug o war domination mode that provides both player scoring and team scoring
       // Scoring reports over webserver to paired mobile device and refreshes every time
@@ -1188,6 +1209,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "9") == 0) {
+      EEPROM.write(1, 9);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       // 10 Minute domination mode that provides both player scoring and team scoring
       // Scoring reports over webserver to paired mobile device and refreshes every time
@@ -1220,6 +1243,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
 
     
     if (strcmp((char*)data, "101") == 0) {
+      EEPROM.write(2, 1);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       MOTIONSENSOR = true;
@@ -1230,6 +1255,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "102") == 0) {
+      EEPROM.write(2, 2);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       CAPTURETHEFLAG = true;
@@ -1240,6 +1267,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "103") == 0) {
+      EEPROM.write(2, 3);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       CONTROLPOINTLOST = true;
@@ -1250,6 +1279,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "104") == 0) {
+      EEPROM.write(2, 4);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       GASGRENADE = true;
@@ -1260,6 +1291,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "105") == 0) {
+      EEPROM.write(2, 5);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       LIGHTDAMAGE = true;
@@ -1270,6 +1303,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "106") == 0) {
+      EEPROM.write(2, 6);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       MEDIUMDAMAGE = true;
@@ -1280,6 +1315,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "107") == 0) {
+      EEPROM.write(2, 7);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       HEAVYDAMAGE = true;
@@ -1290,6 +1327,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "108") == 0) {
+      EEPROM.write(2, 8);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       FRAG = true;
@@ -1300,6 +1339,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "109") == 0) {
+      EEPROM.write(2, 9);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       RESPAWNSTATION = true;
@@ -1310,6 +1351,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "110") == 0) {
+      EEPROM.write(2, 10);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       MEDKIT = true;
@@ -1320,6 +1363,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "112") == 0) {
+      EEPROM.write(2, 12);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       ARMORBOOST = true;
@@ -1330,6 +1375,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "113") == 0) {
+      EEPROM.write(2, 13);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       SHEILDS = true;
@@ -1340,6 +1387,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "111") == 0) {
+      EEPROM.write(2, 11);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       LOOTBOX = true;
@@ -1350,6 +1399,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "114") == 0) {
+      EEPROM.write(2, 14);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       OWNTHEZONE = true;
@@ -1360,6 +1411,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "115") == 0) {
+      EEPROM.write(2, 15);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       CONTROLPOINTCAPTURED = true;
@@ -1370,6 +1423,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "116") == 0) {
+      EEPROM.write(2, 16);
+      EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
       CUSTOMLTTOTAG = true;
@@ -1383,6 +1438,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTODamage = 1;
+      EEPROM.write(9, 1);
+      EEPROM.commit();
       Serial.println("Tags set to 1!!!");
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10151;
@@ -1393,6 +1450,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTODamage = 1;
+      EEPROM.write(9, 2);
+      EEPROM.commit();
       Serial.println("Tags set to 2!!!");
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10152;
@@ -1403,6 +1462,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTODamage = 1;
+      EEPROM.write(9, 3);
+      EEPROM.commit();
       Serial.println("Tags set to 3!!!");
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10153;
@@ -1413,6 +1474,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
       LTTODamage = 1;
+      EEPROM.write(9, 4);
+      EEPROM.commit();
       Serial.println("Tags set to 4!!!");
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10154;
@@ -1423,6 +1486,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Team = 2;
       RGBWHITE = true;
+      EEPROM.write(3, 1);
+      EEPROM.commit();
       Serial.println("Team Set to Nuetral!!!");
       // debugmonitor.println("Team Set to Nuetral!!!");
       ANYTEAM = true;
@@ -1435,6 +1500,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Team = 0;
       RGBRED = true;
+      EEPROM.write(3, 2);
+      EEPROM.commit();
       Serial.println("Team Set to Red!!!");
       //debugmonitor.println("Team Set to Red!!!");
       ANYTEAM = false;
@@ -1447,6 +1514,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Team = 1;
       RGBBLUE = true;
+      EEPROM.write(3, 3);
+      EEPROM.commit();
       Serial.println("Team Set to Blue!!!");
       //debugmonitor.println("Team Set to Red!!!");
       ANYTEAM = false;
@@ -1459,6 +1528,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Team = 2;
       RGBYELLOW = true;
+      EEPROM.write(3, 4);
+      EEPROM.commit();
       Serial.println("Team Set to Yellow!!!");
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10204;
@@ -1469,6 +1540,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Team = 3;
       RGBGREEN = true;
+      EEPROM.write(3, 5);
+      EEPROM.commit();
       Serial.println("Team Set to Green!!!");
       //debugmonitor.println("Team Set to Green!!!");
       ANYTEAM = false;
@@ -1480,6 +1553,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "301") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 1000;
+      EEPROM.write(4, 1);
+      EEPROM.commit();
       Serial.println(irledinterval);
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10301;
@@ -1489,6 +1564,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "302") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 2000;
+      EEPROM.write(4, 2);
+      EEPROM.commit();
       Serial.println(irledinterval);
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10302;
@@ -1498,6 +1575,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "303") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 3000;
+      EEPROM.write(4, 3);
+      EEPROM.commit();
       Serial.println(irledinterval);
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10303;
@@ -1507,6 +1586,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "304") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 5000;
+      EEPROM.write(4, 4);
+      EEPROM.commit();
       Serial.println(irledinterval);
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10304;
@@ -1516,6 +1597,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "305") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 10000;
+      EEPROM.write(4, 5);
+      EEPROM.commit();
       Serial.println(irledinterval);
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10305;
@@ -1525,6 +1608,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "306") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 15000;
+      EEPROM.write(4, 6);
+      EEPROM.commit();
       Serial.println(irledinterval);
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10306;
@@ -1534,6 +1619,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "307") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 30000;
+      EEPROM.write(4, 7);
+      EEPROM.commit();
       Serial.println(irledinterval);
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10307;
@@ -1543,6 +1630,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "308") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       irledinterval = 60000;
+      EEPROM.write(4, 8);
+      EEPROM.commit();
       Serial.println(irledinterval);
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10308;
@@ -1552,7 +1641,9 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "401") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = false;
-    Serial.println("Cool Down Deactivated"); 
+      EEPROM.write(5, 1);
+      EEPROM.commit();
+      Serial.println("Cool Down Deactivated"); 
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10401;
         BROADCASTESPNOW = true;
@@ -1562,6 +1653,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 5000;
+      EEPROM.write(5, 2);
+      EEPROM.commit();
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
@@ -1574,6 +1667,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 10000;
+      EEPROM.write(5, 3);
+      EEPROM.commit();
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
@@ -1586,6 +1681,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 15000;
+      EEPROM.write(5, 4);
+      EEPROM.commit();
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
@@ -1598,6 +1695,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 30000;
+      EEPROM.write(5, 5);
+      EEPROM.commit();
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
@@ -1610,6 +1709,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 60000;
+      EEPROM.write(5, 6);
+      EEPROM.commit();
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
@@ -1622,6 +1723,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 120000;
+      EEPROM.write(5, 7);
+      EEPROM.commit();
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
@@ -1634,6 +1737,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 180000;
+      EEPROM.write(5, 8);
+      EEPROM.commit();
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
@@ -1646,6 +1751,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 300000;
+      EEPROM.write(5, 9);
+      EEPROM.commit();
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
@@ -1658,6 +1765,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 600000;
+      EEPROM.write(5, 10);
+      EEPROM.commit();
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
@@ -1669,6 +1778,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "411") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      EEPROM.write(5, 11);
+      EEPROM.commit();
       CoolDownInterval = 900000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -1682,6 +1793,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 1200000;
+      EEPROM.write(5, 12);
+      EEPROM.commit();
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
@@ -1694,6 +1807,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 1800000;
+      EEPROM.write(5, 13);
+      EEPROM.commit();
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
@@ -1705,6 +1820,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "501") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 1;
+      EEPROM.write(6, 1);
+      EEPROM.commit();
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
       }if (DeviceSelector != JBOXID) {
@@ -1715,6 +1832,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "502") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 10;
+      EEPROM.write(6, 2);
+      EEPROM.commit();
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
       }if (DeviceSelector != JBOXID) {
@@ -1725,6 +1844,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "503") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 15;
+      EEPROM.write(6, 3);
+      EEPROM.commit();
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
       }if (DeviceSelector != JBOXID) {
@@ -1735,6 +1856,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "504") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 30;
+      EEPROM.write(6, 4);
+      EEPROM.commit();
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
       }if (DeviceSelector != JBOXID) {
@@ -1745,6 +1868,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "505") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 60;
+      EEPROM.write(6, 5);
+      EEPROM.commit();
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
       }if (DeviceSelector != JBOXID) {
@@ -1755,6 +1880,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "506") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 100;
+      EEPROM.write(6, 6);
+      EEPROM.commit();
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
       }if (DeviceSelector != JBOXID) {
@@ -1765,6 +1892,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "507") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 150;
+      EEPROM.write(6, 7);
+      EEPROM.commit();
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
       }if (DeviceSelector != JBOXID) {
@@ -1775,6 +1904,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "508") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 300;
+      EEPROM.write(6, 8);
+      EEPROM.commit();
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
       }if (DeviceSelector != JBOXID) {
@@ -1785,6 +1916,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "509") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 500;
+      EEPROM.write(6, 9);
+      EEPROM.commit();
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
       }if (DeviceSelector != JBOXID) {
@@ -1795,6 +1928,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "510") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       RequiredCapturableEmitterCounter = 1000;
+      EEPROM.write(6, 10);
+      EEPROM.commit();
       Serial.print("Required Capturable Emitter Counter Set to: ");
       Serial.println(RequiredCapturableEmitterCounter);
       }if (DeviceSelector != JBOXID) {
@@ -1806,6 +1941,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Serial.println("BRX Mode");
       GearMod = 0;
+      EEPROM.write(7, 1);
+      EEPROM.commit();
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10601;
         BROADCASTESPNOW = true;
@@ -1815,6 +1952,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Serial.println("LTTO Mode");
       GearMod = 1;
+      EEPROM.write(7, 2);
+      EEPROM.commit();
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10602;
         BROADCASTESPNOW = true;
@@ -1823,6 +1962,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "603") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       Serial.println("Recoil Mode");
+      EEPROM.write(7, 3);
+      EEPROM.commit();
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10603;
         BROADCASTESPNOW = true;
@@ -1831,6 +1972,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "700") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
+      EEPROM.write(8, 0);
+      EEPROM.commit();
       LTTOOTZ = false;
       LTTORESPAWN = false;
       LTTOHOSTED = false;
@@ -1844,6 +1987,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "701") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
+      EEPROM.write(8, 1);
+      EEPROM.commit();
       LTTOOTZ = false;
       LTTORESPAWN = false;
       LTTOHOSTED = true;
@@ -1857,6 +2002,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "702") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
+      EEPROM.write(8, 2);
+      EEPROM.commit();
       LTTOOTZ = false;
       LTTORESPAWN = false;
       LTTOHOSTED = false;
@@ -1870,6 +2017,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "703") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
+      EEPROM.write(8, 3);
+      EEPROM.commit();
       LTTOOTZ = false;
       LTTORESPAWN = true;
       LTTOHOSTED = false;
@@ -1883,6 +2032,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "704") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       //ResetAllIRProtocols();
+      EEPROM.write(8, 4);
+      EEPROM.commit();
       LTTOOTZ = true;
       LTTORESPAWN = false;
       LTTOHOSTED = false;
@@ -3153,6 +3304,11 @@ void receiveBRXir() {
         if (BASICDOMINATION) {
           BasicDomination();
         }
+        if (TAGACTIVATEDIRCOOLDOWN) {
+          if (!TAGACTIVATEDIR) {
+            // this means that the base is on cool down, should send alarm or damage or something
+          }
+        }
         if (TAGACTIVATEDIR) {
           if (TAGACTIVATEDIRCOOLDOWN) {
             TAGACTIVATEDIR = false;
@@ -3165,11 +3321,6 @@ void receiveBRXir() {
           }
           VerifyCurrentIRTagSelection();
           BUZZ = true;
-        }
-        if (TAGACTIVATEDIRCOOLDOWN) {
-          if (!TAGACTIVATEDIR) {
-            // this means that the base is on cool down, should send alarm or damage or something
-          }
         }
       } else {
         Serial.println("Protocol not Recognized");
@@ -4419,7 +4570,7 @@ void PostDominationScore() {
 // *****************************************************************************************
 void loop1(void *pvParameters) {
   Serial.print("GAME loop running on core ");
-  Serial.println(xPortGetCoreID());   
+  Serial.println(xPortGetCoreID());
   while(1) { // starts the forever loop
     // put all the serial activities in here for communication with the brx
     unsigned long currentMillis0 = millis(); // sets the timer for timed operations
@@ -4548,6 +4699,82 @@ void loop1(void *pvParameters) {
 void loop2(void *pvParameters) {
   Serial.print("cOMMS loop running on core ");
   Serial.println(xPortGetCoreID());
+  // run EEPROM verifications
+  incomingData1 = JBOXID; // set incoming data to jbox id for processing of commands 
+  int savedsettings = 0;
+  // read rest of values for settings 1-11 and apply to device
+  savedsettings = EEPROM.read(1);
+  if (savedsettings > 0) { // checking if the flash has a saved data set
+    // primary function - 9 - 10000
+    incomingData2 = EEPROM.read(1);
+    incomingData2 = incomingData2 + 10000;
+    ProcessIncomingCommands();
+    delay(10);
+  }
+  savedsettings = EEPROM.read(2);
+  if (savedsettings > 0) { // checking if the flash has a saved data set
+    // ir emitter type - 16 - 10100
+    incomingData2 = EEPROM.read(2);
+    incomingData2 = incomingData2 + 10100;
+    ProcessIncomingCommands();
+    delay(10);
+  }
+  savedsettings = EEPROM.read(3);
+  if (savedsettings > 0) { // checking if the flash has a saved data set
+    // team alignment - 5 - 10200
+    incomingData2 = EEPROM.read(3);
+    incomingData2 = incomingData2 + 10200;
+    ProcessIncomingCommands();
+    delay(10);
+  }
+  savedsettings = EEPROM.read(4);
+  if (savedsettings > 0) { // checking if the flash has a saved data set
+    // ir emitter frequency - 8 - 10300
+    incomingData2 = EEPROM.read(4);
+    incomingData2 = incomingData2 + 10300;
+    ProcessIncomingCommands();
+    delay(10);
+  }
+  savedsettings = EEPROM.read(5);
+  if (savedsettings > 0) { // checking if the flash has a saved data set
+    // ir cool down time - 13 - 10400
+    incomingData2 = EEPROM.read(5);
+    incomingData2 = incomingData2 + 10400;
+    ProcessIncomingCommands();
+    delay(10);
+  }
+  savedsettings = EEPROM.read(6);
+  if (savedsettings > 0) { // checking if the flash has a saved data set
+    // base tag count for capture - 10 - 10500
+    incomingData2 = EEPROM.read(6);
+    incomingData2 = incomingData2 + 10500;
+    ProcessIncomingCommands();
+    delay(10);
+  }
+  savedsettings = EEPROM.read(7);
+  if (savedsettings > 0) { // checking if the flash has a saved data set
+    // gear selection - 3 - 10600
+    incomingData2 = EEPROM.read(7);
+    incomingData2 = incomingData2 + 10600;
+    ProcessIncomingCommands();
+    delay(10);
+  }
+  savedsettings = EEPROM.read(8);
+  if (savedsettings >= 0) { // checking if the flash has a saved data set
+    // ltto tag type - 4 - 10700
+    incomingData2 = EEPROM.read(8);
+    incomingData2 = incomingData2 + 10700;
+    ProcessIncomingCommands();
+    delay(10);
+  }
+  savedsettings = EEPROM.read(9);
+  if (savedsettings > 0) { // checking if the flash has a saved data set
+    // ltto damage - 4 - 10150
+    incomingData2 = EEPROM.read(9);
+    incomingData2 = incomingData2 + 10150;
+    ProcessIncomingCommands();
+    delay(10);
+  }
   while (1) { // starts the forever loopws.cleanupClients();
     unsigned long currentMillis1 = millis(); // sets the timer for timed operations
     ws.cleanupClients();
@@ -4679,6 +4906,9 @@ void setup(){
   Serial.println(WiFi.macAddress());
   Serial.println("Starting ESPNOW");
   IntializeESPNOW();
+  //***********************************************************************
+  // initialize EEPROM
+  EEPROM.begin(EEPROM_SIZE);
   //***********************************************************************
   // initialize dual cores and dual loops
   Serial.println(xPortGetCoreID());
