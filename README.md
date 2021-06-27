@@ -210,8 +210,13 @@ the JBOX. Be sure to modify the sub-settings only AFTER you change the main
 function for game play/interaction so that the JBOX does exactly what you want.
 Most settings are not saved but reset when going between main base functions.
 
-NOTE: The JBOX boots up in "Basic Domination Mode" so it will start out of the box
-running a domination game as soon as the first team tags it to "capture it".
+Notes:
+  1. The JBOX boots up in "Basic Domination Mode" so it will start out of the box
+     running a domination game as soon as the first team tags it to "capture it".
+  2. An auto save function is built in so that the last settings programmed into the 
+     JBOX are stored and reloaded upon reset. This way you can have designated JBOXs
+     for respawns or domination bases etc. and label them as such, but can still have
+     the freedom to change settings as desired.
 
 Step 1: Select a main function for the JBOX to execute
 
@@ -244,6 +249,6 @@ Step 2: Select the applicable functions that would apply to the main function se
           - Team Freindly Selection - changes team alignment  
           - Capturable IR Base Tag Count - Sets how many tags are needed to capture the enemy flag
           - 
-
+Step 3: Play - use the base as desired as a domination base, respawn base, loot station etc. 
 
 
