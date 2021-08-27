@@ -8,21 +8,22 @@ BRX compatible utility box for interactive game play
 
 Required Components:
 --------------------
-Wemos D1 Mini ESP32 (1), IR Receiver TSOP4138 or similar (1) and or 
-TSAL6400 Emitter (4); one or the other or both as a bare minimum.
+Wemos D1 Mini ESP32 (1), or similar, IR Receiver TSOP4138 or similar (1) and or 
+TSAL6400/6100/6200 Emitter (4); one or the other or both as a bare minimum.
 
 Optional Components:
 --------------------
 IR Receiver TSOP4138 (1), TSAL6400 Emitter (4), 
 SS8550 Transistors (2) or 2N2222 Transistors (alternate design), Piezo Buzzer (1), RGB Common Cathode 5mm LED (1), 
-RYLR896 LORA module (1), Resistors as indicated on schematic (multiple)
+RYLR896 LORA module(future use) (1), Resistors as indicated on schematic (multiple)
 
 Basic Concepts:
 ---------------
 The JBOX is a game box or accessory for the BRX line of taggers, if desired, 
 the IR Protocol could be changed easily to configure the device to any laser 
 tag equipment line. I hope to, in the future, make it compatible with all my 
-favorite laser tag gear. The device uses WiFi to be configured and set by a mobile 
+favorite laser tag gear (update, it now works as domination base for nerf and 
+battle rifle pro). The device uses WiFi to be configured and set by a mobile 
 device using the ITO control platform "Web Server". A customized Blynk application 
 has been developed and is used for configuring and customizing the functions 
 of the JBOX device. If all components listed above are integrated, the device 
@@ -248,7 +249,11 @@ Step 2: Select the applicable functions that would apply to the main function se
         Capture The Flag:
           - Team Freindly Selection - changes team alignment  
           - Capturable IR Base Tag Count - Sets how many tags are needed to capture the enemy flag
-          - 
+        
+        Own The Zone:
+          - basically continuous iR emitter but emitting a king of the hill tag. Jedge tracks this tag
+            And accumulates objective points for the player and the team and reports at score sync
+
 Step 3: Play - use the base as desired as a domination base, respawn base, loot station etc. 
 
 
