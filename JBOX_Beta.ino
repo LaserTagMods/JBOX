@@ -34,7 +34,8 @@
  *            - Added LTTO IR tags to send
  * 5/28/21    - Added in ability to program all JBOXes from one JBOX
  * 6/27/21    - Added in state save for settings so on reset, settings are retained. Uses Flash/EEPROM, so this means that your board may be no good after 100,000 to 1,000,000 setting changes/uses.
- * 
+ * 6/30/21    - Added a second web server for scoring only, access 192.168.4.1:80/scores
+ * 7/1/21     - Added in BRP compatibility for teams red, blue, yellow, green, purple and cyan
  * 
 */
 
@@ -62,11 +63,11 @@
 //******************** DEVICE SPECIFIC DEFINITIONS ************************
 //*************************************************************************
 // These should be modified as applicable for your needs
-int JBOXID = 105; // this is the gun or player ID, each esp32 needs a different one, set "0-63"
+int JBOXID = 101; // this is the gun or player ID, each esp32 needs a different one, set "0-63"
 int DeviceSelector = JBOXID;
 int TaggersOwned = 64; // how many taggers do you own or will play?
 // Replace with your network credentials
-const char* ssid = "JBOX#105";
+const char* ssid = "JBOX#101";
 const char* password = "123456789";
 
 
@@ -136,7 +137,7 @@ const long lorainterval = 3000;
 // Define Variables used for the game functions
 int TeamID=0; // this is for team recognition, team 0 = red, team 1 = blue, team 2 = yellow, team 3 = green
 int gamestatus=0; // used to turn the ir reciever procedure on and off
-int PlayerID=0; // used to identify player
+int PlayerID=65; // used to identify player
 int PID[6]; // used for recording player bits for ID decifering
 int DamageID=0; // used to identify weapon
 int ShotType=0; // used to identify shot type
@@ -205,6 +206,7 @@ bool BASECONTINUOUSIRPULSE = false; // enables/disables continuous pulsing of ir
 bool SINGLEIRPULSE = false; // enabled/disables single shot of enabled ir signal
 bool TAGACTIVATEDIR = true; // enables/disables tag activated onetime IR, set as default for basic domination game
 bool TAGACTIVATEDIRCOOLDOWN = false; // used to manage frequency of accessible base ir protocol features
+bool COOLINGDOWN = false;
 long CoolDownStart = 0; // used for a delay timer
 long CoolDownInterval = 0;
 
@@ -222,6 +224,7 @@ bool MEDIUMDAMAGE = false;
 bool HEAVYDAMAGE = false;
 bool FRAG = false;
 bool RESPAWNSTATION = false;
+bool WRESPAWNSTATION = false;
 bool MEDKIT = false;
 bool LOOTBOX = false;
 bool ARMORBOOST = false;
@@ -370,6 +373,11 @@ void getReadings(){
   DataToBroadcast.DP2 = datapacket2;
   DataToBroadcast.DP3 = datapacket3;
   datapacket4.toCharArray(DataToBroadcast.DP4, 200);
+  Serial.println("Data Being Sent:");
+  Serial.println(datapacket1);
+  Serial.println(datapacket2);
+  Serial.println(datapacket3);
+  Serial.println(datapacket4);
 }
 
 void ResetReadings() {
@@ -446,7 +454,7 @@ JSONVar board;
 
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
-AsyncWebServer server1(81);
+//AsyncWebServer server1(81);
 AsyncWebSocket ws("/ws");
 AsyncEventSource events("/events");
 
@@ -642,6 +650,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         <option value="7">5 Minute Tug of War</option>
         <option value="8">Capture The Flag</option>
         <option value="9">10 Minute Domination (multi base)</option>
+        <option value="10">Own The Zone</option>
         <option value="2">Continuous IR Emitter</option>
         <option value="3">Tag Activated IR Emitter</option>
         <option value="4">Capturable Continuous IR Emitter</option>
@@ -657,7 +666,8 @@ const char index_html[] PROGMEM = R"rawliteral(
         <option value="106">Medium Damage</option>
         <option value="107">Heavy Damage</option>
         <option value="108">Explosive Damage</option>
-        <option value="109">Respawn Station</option>
+        <option value="109">IR Respawn Station</option>
+        <option value="117">ESPNOW Respawn Station</option>
         <option value="110">Med Kit</option>
         <option value="111">Loot Box</option>
         <option value="112">Armor Boost</option>
@@ -723,7 +733,7 @@ const char index_html[] PROGMEM = R"rawliteral(
       <p><select name="ambience" id="ambienceid">
         <option value="601">BRX</option>
         <option value="602">LTTO</option>
-        <option value="603">Recoil - (coming soon)</option>
+        <option value="603">Battle Rifle Pro</option>
         </select>
       </p>
       <h2>Customized LTTO Tag</h2>
@@ -1494,8 +1504,42 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
         BROADCASTESPNOW = true;
       }
     }
-
-    
+    if (strcmp((char*)data, "10") == 0) {
+      EEPROM.write(1, 10);
+      EEPROM.commit();
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
+      // Own The Zone Mode sends the IR and zone espnow beacon to add objective points to player/teams
+      // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
+      // Clears out existing settings
+      // Sets default Continuous Emitter Tag to Respwan Station As Default
+      // Creates A Counter for Capturability by Shots (default is 10, change default to desired count) 
+      // Enable IR Activated Capturability to switch team friendly setting to last captured    
+      // bases start out as default red team
+      // recommend doing a delay for respawn time to limit players ability to respawn right away on a base they may be guarding
+      Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
+      //debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
+      Function = 4;
+      Team = 2; // sets all bases to default to red team
+      RGBWHITE = true;
+      BASECONTINUOUSIRPULSE = false;
+      DOMINATIONCLOCK = false; // stops the game from going if already running
+      BASICDOMINATION = false; // enables this game mode
+      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
+      ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
+      ResetAllIRProtocols(); // reset all ir protocols
+      OWNTHEZONE = true; // enables the ZONE TAG IR protocol
+      CAPTURABLEEMITTER = true; // enables the team freindly to be toggled via IR  
+      FIVEMINUTEDOMINATION = false;
+      TENMINUTEDOMINATION = false;
+      FIVEMINUTETUGOWAR = false;
+      CAPTURETHEFLAGMODE = false;
+      MULTIBASEDOMINATION = false;
+      irledinterval = 15000;
+      }if (DeviceSelector != JBOXID) {
+        datapacket2 = 10004;
+        BROADCASTESPNOW = true;
+      }
+    }
     if (strcmp((char*)data, "101") == 0) {
       EEPROM.write(2, 1);
       EEPROM.commit();
@@ -1685,6 +1729,18 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       Serial.println("LTTO Customizer Enabled!!!");
       }if (DeviceSelector != JBOXID) {
         datapacket2 = 10116;
+        BROADCASTESPNOW = true;
+      }
+    }
+    if (strcmp((char*)data, "117") == 0) {
+      EEPROM.write(2, 9);
+      EEPROM.commit();
+      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
+      ResetAllIRProtocols();
+      WRESPAWNSTATION = true;
+      Serial.println("ESPNOW Respawn Station Enabled!!!");
+      }if (DeviceSelector != JBOXID) {
+        datapacket2 = 10117;
         BROADCASTESPNOW = true;
       }
     }
@@ -1895,6 +1951,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "401") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = false;
+      COOLINGDOWN = false;
       EEPROM.write(5, 1);
       EEPROM.commit();
       Serial.println("Cool Down Deactivated"); 
@@ -1906,6 +1963,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "402") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 5000;
       EEPROM.write(5, 2);
       EEPROM.commit();
@@ -1920,6 +1978,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "403") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 10000;
       EEPROM.write(5, 3);
       EEPROM.commit();
@@ -1934,6 +1993,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "404") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 15000;
       EEPROM.write(5, 4);
       EEPROM.commit();
@@ -1948,6 +2008,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "405") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 30000;
       EEPROM.write(5, 5);
       EEPROM.commit();
@@ -1962,6 +2023,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "406") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 60000;
       EEPROM.write(5, 6);
       EEPROM.commit();
@@ -1976,6 +2038,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "407") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 120000;
       EEPROM.write(5, 7);
       EEPROM.commit();
@@ -1990,6 +2053,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "408") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 180000;
       EEPROM.write(5, 8);
       EEPROM.commit();
@@ -2004,6 +2068,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "409") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 300000;
       EEPROM.write(5, 9);
       EEPROM.commit();
@@ -2018,6 +2083,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "410") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 600000;
       EEPROM.write(5, 10);
       EEPROM.commit();
@@ -2032,6 +2098,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "411") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       EEPROM.write(5, 11);
       EEPROM.commit();
       CoolDownInterval = 900000;
@@ -2046,6 +2113,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "412") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 1200000;
       EEPROM.write(5, 12);
       EEPROM.commit();
@@ -2060,6 +2128,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "413") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 1800000;
       EEPROM.write(5, 13);
       EEPROM.commit();
@@ -2215,7 +2284,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     }
     if (strcmp((char*)data, "603") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      Serial.println("Recoil Mode");
+      Serial.println("BRP Mode");
+      GearMod = 2;
       EEPROM.write(7, 3);
       EEPROM.commit();
       }if (DeviceSelector != JBOXID) {
@@ -2628,6 +2698,35 @@ void ProcessIncomingCommands() {
       CAPTURETHEFLAGMODE = false;
       MULTIBASEDOMINATION = true;
     }
+    if (incomingData2  ==  10010) {
+      // Own The Zone Mode sends the IR and zone espnow beacon to add objective points to player/teams
+      // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
+      // Clears out existing settings
+      // Sets default Continuous Emitter Tag to Respwan Station As Default
+      // Creates A Counter for Capturability by Shots (default is 10, change default to desired count) 
+      // Enable IR Activated Capturability to switch team friendly setting to last captured    
+      // bases start out as default red team
+      // recommend doing a delay for respawn time to limit players ability to respawn right away on a base they may be guarding
+      Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
+      //debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
+      Function = 4;
+      Team = 2; // sets all bases to default to red team
+      RGBWHITE = true;
+      BASECONTINUOUSIRPULSE = false;
+      DOMINATIONCLOCK = false; // stops the game from going if already running
+      BASICDOMINATION = false; // enables this game mode
+      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
+      ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
+      ResetAllIRProtocols(); // reset all ir protocols
+      OWNTHEZONE = true; // enables the ZONE TAG IR protocol
+      CAPTURABLEEMITTER = true; // enables the team freindly to be toggled via IR  
+      FIVEMINUTEDOMINATION = false;
+      TENMINUTEDOMINATION = false;
+      FIVEMINUTETUGOWAR = false;
+      CAPTURETHEFLAGMODE = false;
+      MULTIBASEDOMINATION = false;
+      irledinterval = 15000;
+    }
     if (incomingData2  ==  10101) {
       ResetAllIRProtocols();
       MOTIONSENSOR = true;
@@ -2722,6 +2821,11 @@ void ProcessIncomingCommands() {
       ResetAllIRProtocols();
       CUSTOMLTTOTAG = true;
       Serial.println("LTTO Customizer Enabled!!!");
+    }
+    if (incomingData2  ==  10117) {
+      ResetAllIRProtocols();
+      WRESPAWNSTATION = true;
+      Serial.println("ESPNOW Respawn Station Enabled!!!");
     }
     if (incomingData2  ==  10151) {
       //ResetAllIRProtocols();
@@ -2819,6 +2923,7 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10402) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 5000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2826,6 +2931,7 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10403) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 10000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2833,6 +2939,7 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10404) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 15000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2840,6 +2947,7 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10405) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 30000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2847,6 +2955,7 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10406) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 60000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2854,6 +2963,7 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10407) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 120000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2861,6 +2971,7 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10408) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 180000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2868,6 +2979,7 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10409) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 300000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2876,12 +2988,14 @@ void ProcessIncomingCommands() {
     if (incomingData2  ==  10410) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 600000;
+      COOLINGDOWN = false;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
     }
     if (incomingData2  ==  10411) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 900000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2889,6 +3003,7 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10412) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 1200000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2896,6 +3011,7 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10413) {
       TAGACTIVATEDIRCOOLDOWN = true;
+      COOLINGDOWN = false;
       CoolDownInterval = 1800000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -3226,31 +3342,31 @@ void rgbblink() {
     RGBState = HIGH;
     if(RGBGREEN) {
       rgbgreen();
-      Serial.println("Blinking RGB");
+      //Serial.println("Blinking RGB");
       }
     if(RGBRED) {
       rgbred();
-      Serial.println("Blinking RGB");
+      //Serial.println("Blinking RGB");
       }
     if(RGBYELLOW) {
       rgbyellow();
-      Serial.println("Blinking RGB");
+      //Serial.println("Blinking RGB");
       }
     if(RGBBLUE) {
       rgbblue();
-      Serial.println("Blinking RGB");
+      //Serial.println("Blinking RGB");
       }
     if(RGBPURPLE) {
       rgbpurple();
-      Serial.println("Blinking RGB");
+      //Serial.println("Blinking RGB");
       }
     if(RGBCYAN) {
       rgbcyan();
-      Serial.println("Blinking RGB");
+      //Serial.println("Blinking RGB");
       }
     if(RGBWHITE) {
       rgbwhite();
-      Serial.println("Blinking RGB");
+      //Serial.println("Blinking RGB");
       }
   } else {
     rgboff();
@@ -3371,38 +3487,51 @@ void IDShot() {
 void IDplayer() {
       // determining indivudual protocol values for player ID bits
       // Also assign IR values for sending player ID with device originated tags
+      int brpid = 0;
+      if (TT[0] > 750) {
+        brpid = brpid + 1;
+      }
       if (PP[5] > 750) {
-        PID[0] = 1;
+        PID[5] = 1;
+        brpid = brpid + 2;
       } else {
-        PID[0] = 0;
+        PID[5] = 0;
       }
       if (PP[4] > 750) {
-        PID[1]=2;
-      } else {
-        PID[1]=0;
-      }
-      if (PP[3] > 750) {
-        PID[2]=4;
-        } else {
-        PID[2]=0;
-      }
-      if (PP[2] > 750) {
-        PID[3]=8;
-      } else {
-        PID[3]=0;
-      }
-      if (PP[1] > 750) {
-        PID[4]=16;
+        PID[4]=2;
+        brpid = brpid + 4;
       } else {
         PID[4]=0;
       }
-      if (PP[0] > 750) {
-        PID[5]=32;
+      if (PP[3] > 750) {
+        PID[3]=4;
+        brpid = brpid + 8;
+        } else {
+        PID[3]=0;
+      }
+      if (PP[2] > 750) {
+        PID[2]=8;
+        brpid = brpid + 16;
       } else {
-        PID[5]=0;
+        PID[2]=0;
+      }
+      if (PP[1] > 750) {
+        PID[1]=16;
+        brpid = brpid + 32;
+      } else {
+        PID[1]=0;
+      }
+      if (PP[0] > 750) {
+        PID[0]=32;
+        brpid = brpid + 64;
+      } else {
+        PID[0]=0;
       }
       // ID Player by summing assigned values above based upon protocol values (1-64)
       PlayerID=PID[0]+PID[1]+PID[2]+PID[3]+PID[4]+PID[5];
+      if (GearMod == 2) {
+        PlayerID = brpid;
+      }
       Serial.print("Player ID = ");
       Serial.println(PlayerID);      
 }
@@ -3441,6 +3570,20 @@ void teamID() {
       TeamID = 2;
       Serial.print("team = Yellow = ");
       Serial.println(TeamID);
+      }
+      if (GearMod == 2) {
+        TeamID = 0;
+        if (DD[1] > 750) {
+          TeamID = TeamID + 1;
+        }
+        if (DD[0] > 750) {
+          TeamID = TeamID + 2;
+        }
+        if (TT[1] > 750) {
+          TeamID = TeamID + 4;
+        }
+        Serial.print("team = Blue = ");
+        Serial.println(TeamID);
       }
 }
 void IDPower() {
@@ -3559,22 +3702,20 @@ void receiveBRXir() {
           BasicDomination();
         }
         if (TAGACTIVATEDIRCOOLDOWN) {
-          if (!TAGACTIVATEDIR) {
-            // this means that the base is on cool down, should send alarm or damage or something
-          }
-        }
-        if (TAGACTIVATEDIR) {
-          if (TAGACTIVATEDIRCOOLDOWN) {
-            TAGACTIVATEDIR = false;
+          if (COOLINGDOWN) {
+            // this means that the base is on cool down, should send alarm or damage or something buzzzz!!!
+          } else {
             if (ANYTEAM) {
               Team = TeamID;
             }
             CoolDownStart = millis();
             resetRGB();
             RGBRED = true;
+            VerifyCurrentIRTagSelection();
           }
+        }
+        if (TAGACTIVATEDIR) {
           VerifyCurrentIRTagSelection();
-          BUZZ = true;
         }
       } else {
         Serial.println("Protocol not Recognized");
@@ -3725,23 +3866,21 @@ void ReceiveLTTO() {
           if (BASICDOMINATION) {
             BasicDomination();
           }
-          if (TAGACTIVATEDIR) {
-            if (TAGACTIVATEDIRCOOLDOWN) {
-              TAGACTIVATEDIR = false;
+          if (TAGACTIVATEDIRCOOLDOWN) {
+            if (COOLINGDOWN) {
+              // this means that the base is on cool down, should send alarm or damage or something buzzzz!!!
+            } else {
               if (ANYTEAM) {
                 Team = TeamID;
               }
               CoolDownStart = millis();
               resetRGB();
               RGBRED = true;
+              VerifyCurrentIRTagSelection();
             }
+          } 
+          if (TAGACTIVATEDIR) {
             VerifyCurrentIRTagSelection();
-            BUZZ = true;
-          }
-          if (TAGACTIVATEDIRCOOLDOWN) {
-            if (!TAGACTIVATEDIR) {
-              // this means that the base is on cool down, should send alarm or damage or something
-            }
           }
         }
       }
@@ -4028,18 +4167,17 @@ void CaptureTheFlag() { // not set properly yet
   SetIRProtocol();
 }
 void SwapBRX() {
-  BulletType = 1;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Damage = 1;
-  Critical = 0;
-  Power = 1;
-  SetIRProtocol();
+  //BulletType = 1;
+  //Player = 63;
+  //if (Player == PlayerID) {
+    //Player = random(63);
+  //}
+  //Damage = 1;
+  //Critical = 0;
+  //Power = 1;
+  //SetIRProtocol();
   datapacket1 = PlayerID;
   datapacket2 = 31000;
-  datapacket3 = 99;
   BROADCASTESPNOW = true;
 }
 void MotionSensor() {
@@ -4114,6 +4252,10 @@ void OwnTheZone() {
   Critical = 0;
   Power = 0;
   SetIRProtocol();
+  datapacket1 = 99;
+  datapacket2 = 31100;
+  datapacket3 = Team;
+  BROADCASTESPNOW = true;
 }
 void HitTag() {
   BulletType = 0;
@@ -4650,6 +4792,7 @@ void VerifyCurrentIRTagSelection() {
     MedKit(); // sets ir protocol to motion sensor yellow and sends it
   }
   if (LOOTBOX) {
+    digitalWrite(LED_BUILTIN, HIGH);
     SwapBRX(); // sets ir protocol to motion sensor yellow and sends it
   }
   if (ARMORBOOST) {
@@ -4669,6 +4812,9 @@ void VerifyCurrentIRTagSelection() {
   }
   if (MOTIONSENSOR) {
     MotionSensor();
+  }
+  if (OWNTHEZONE) {
+    OwnTheZone();
   }
   BUZZ = true;
 }
@@ -4691,6 +4837,7 @@ void ResetAllIRProtocols() {
   ARMORBOOST = false;
   SHEILDS = false;
   CUSTOMLTTOTAG = false;
+  WRESPAWNSTATION = false;
 }
 
 //*************************************************************************
@@ -4865,12 +5012,15 @@ void loop1(void *pvParameters) {
       if (GearMod == 1) {
         ReceiveLTTO(); // runs the ir receiver, looking for LTTO ir protocols
       }
+      if (GearMod == 2) {
+        receiveBRXir(); // runs the ir receiver, looking for BRP protocol
+      }
       if (TAGACTIVATEDIRCOOLDOWN) {
-        if (!TAGACTIVATEDIR) {
+        if (COOLINGDOWN) {
           // Base is in cool down
           if (currentMillis0 - CoolDownStart > CoolDownInterval) {
             // Cool down is over
-            TAGACTIVATEDIR = true;
+            COOLINGDOWN = false;
             resetRGB;
             RGBWHITE = true;
             Serial.println("Cool Down Is Over");
@@ -5038,6 +5188,7 @@ void loop2(void *pvParameters) {
       BroadcastData(); // sending data via ESPNOW
       Serial.println("Sent Data Via ESPNOW");
       ResetReadings();
+      digitalWrite(LED_BUILTIN, LOW);
     }
     if (BASICDOMINATION) {
       if (currentMillis1 - PreviousMillis > 5000) {
@@ -5142,9 +5293,9 @@ void setup(){
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", index_html, processor);
   });
-  server1.on("/scores", HTTP_GET, [](AsyncWebServerRequest *request){
-    request->send_P(200, "text/html", index1_html, processor);
-  });
+  //server1.on("/scores", HTTP_GET, [](AsyncWebServerRequest *request){
+    //request->send_P(200, "text/html", index1_html, processor);
+  //});
   // json events
     events.onConnect([](AsyncEventSourceClient *client){
       if(client->lastId()){
@@ -5157,7 +5308,7 @@ void setup(){
     server.addHandler(&events);
   // Start server
   server.begin();
-  server1.begin();
+  //server1.begin();
   //***********************************************************************
   // Start ESP Now
   Serial.print("ESP Board MAC Address:  ");
