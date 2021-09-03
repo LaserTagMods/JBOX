@@ -224,7 +224,7 @@ bool MEDIUMDAMAGE = false;
 bool HEAVYDAMAGE = false;
 bool FRAG = false;
 bool RESPAWNSTATION = false;
-bool WRESPAWNSTATION = false;
+bool RESPAWNSTATION = false;
 bool MEDKIT = false;
 bool LOOTBOX = false;
 bool ARMORBOOST = false;
@@ -1324,7 +1324,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
       //debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
       Function = 4;
-      Team = 2; // sets all bases to default to red team
+      Team = 0; // sets all bases to default to red team
       RGBWHITE = true;
       BASECONTINUOUSIRPULSE = false;
       DOMINATIONCLOCK = false; // stops the game from going if already running
@@ -2557,7 +2557,7 @@ void ProcessIncomingCommands() {
       Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
       //debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
       Function = 4;
-      Team = 2; // sets all bases to default to red team
+      Team = 0; // sets all bases to default to red team
       RGBWHITE = true;
       BASECONTINUOUSIRPULSE = false;
       DOMINATIONCLOCK = false; // stops the game from going if already running
@@ -4113,7 +4113,20 @@ void RespawnStation() { // not set properly yet
   Power = 0;
   SetIRProtocol();
 }
-
+void WRespawnStation() { // not set properly yet
+  // enable espnow based respawn function and IR based Respawn Function
+  // Firts IR:
+  BulletType = 15;
+  Player = 63;
+  Damage = 6;
+  Critical = 1;
+  Power = 0;
+  SetIRProtocol();
+  // Now ESPNOW:
+  datapacket1 = 99;
+  datapacket2 = 31110 + Team;
+  BROADCASTESPNOW = true;
+}
 void HeavyDamage() { // not set properly yet
   BulletType = 0;
   Player = 63;
@@ -4788,6 +4801,9 @@ void VerifyCurrentIRTagSelection() {
   if (RESPAWNSTATION) {
     RespawnStation(); // sets ir protocol to motion sensor yellow and sends it
   }
+  if (WRESPAWNSTATION) {
+    WRespawnStation(); // sets ir protocol to motion sensor yellow and sends it
+  }
   if (MEDKIT) {
     MedKit(); // sets ir protocol to motion sensor yellow and sends it
   }
@@ -4990,9 +5006,9 @@ void loop1(void *pvParameters) {
       SINGLEIRPULSE = false;
       VerifyCurrentIRTagSelection();  // runs object for identifying set ir protocol and send it
       ResetAllIRProtocols();
-      if (CAPTURABLEEMITTER) {
-        RESPAWNSTATION = true;
-      }
+      //if (CAPTURABLEEMITTER) {
+        //RESPAWNSTATION = true;
+      //}
       Serial.println("Executed Single IR Pulse Object");
     }
     if (BASECONTINUOUSIRPULSE) {
