@@ -51,6 +51,10 @@
 #include <Arduino_JSON.h>
 #include <HardwareSerial.h> // used for setting up the serial communications on non RX/TX pins
 #include <EEPROM.h> // used for storing data even after reset, in flash/eeprom memory
+#include <HTTPClient.h> // to update via http
+#include <HTTPUpdate.h> // to update via http
+#include <WiFiClientSecure.h> // security access to github
+#include "cert.h" // used for github security
 
 // define the number of bytes I'm using/accessing for eeprom
 #define EEPROM_SIZE 11
@@ -58,6 +62,32 @@
 // serial definitions for LoRa
 #define SERIAL1_RXPIN 19 // TO LORA TX
 #define SERIAL1_TXPIN 23 // TO LORA RX
+
+//*************************************************************************
+//******************** OTA UPDATES ****************************************
+//*************************************************************************
+String FirmwareVer = {"3.10"};
+#define URL_fw_Version "https://raw.githubusercontent.com/LaserTagMods/autoupdate/main/bin_version.txt"
+#define URL_fw_Bin "https://raw.githubusercontent.com/LaserTagMods/autoupdate/main/fw.bin"
+
+//#define URL_fw_Version "http://cade-make.000webhostapp.com/version.txt"
+//#define URL_fw_Bin "http://cade-make.000webhostapp.com/firmware.bin"
+
+bool OTAMODE = false;
+
+void connect_wifi();
+void firmwareUpdate();
+int FirmwareVersionCheck();
+bool UPTODATE = false;
+int updatenotification;
+
+//unsigned long previousMillis = 0; // will store last time LED was updated
+unsigned long previousMillis_2 = 0;
+const long otainterval = 1000;
+const long mini_interval = 1000;
+
+String OTAssid = "dontchangeme"; // network name to update OTA
+String OTApassword = "dontchangeme"; // Network password for OTA
 
 //*************************************************************************
 //******************** DEVICE SPECIFIC DEFINITIONS ************************
@@ -137,7 +167,7 @@ const long lorainterval = 3000;
 // Define Variables used for the game functions
 int TeamID=0; // this is for team recognition, team 0 = red, team 1 = blue, team 2 = yellow, team 3 = green
 int gamestatus=0; // used to turn the ir reciever procedure on and off
-int PlayerID=65; // used to identify player
+int PlayerID=0; // used to identify player
 int PID[6]; // used for recording player bits for ID decifering
 int DamageID=0; // used to identify weapon
 int ShotType=0; // used to identify shot type
@@ -206,7 +236,6 @@ bool BASECONTINUOUSIRPULSE = false; // enables/disables continuous pulsing of ir
 bool SINGLEIRPULSE = false; // enabled/disables single shot of enabled ir signal
 bool TAGACTIVATEDIR = true; // enables/disables tag activated onetime IR, set as default for basic domination game
 bool TAGACTIVATEDIRCOOLDOWN = false; // used to manage frequency of accessible base ir protocol features
-bool COOLINGDOWN = false;
 long CoolDownStart = 0; // used for a delay timer
 long CoolDownInterval = 0;
 
@@ -224,7 +253,7 @@ bool MEDIUMDAMAGE = false;
 bool HEAVYDAMAGE = false;
 bool FRAG = false;
 bool RESPAWNSTATION = false;
-bool RESPAWNSTATION = false;
+bool WRESPAWNSTATION = false;
 bool MEDKIT = false;
 bool LOOTBOX = false;
 bool ARMORBOOST = false;
@@ -373,11 +402,6 @@ void getReadings(){
   DataToBroadcast.DP2 = datapacket2;
   DataToBroadcast.DP3 = datapacket3;
   datapacket4.toCharArray(DataToBroadcast.DP4, 200);
-  Serial.println("Data Being Sent:");
-  Serial.println(datapacket1);
-  Serial.println(datapacket2);
-  Serial.println(datapacket3);
-  Serial.println(datapacket4);
 }
 
 void ResetReadings() {
@@ -799,6 +823,14 @@ const char index_html[] PROGMEM = R"rawliteral(
       </div>
     </div>
   </div>
+  <div class="topnav">
+    <h1>JBOX DEBUG</h1>
+  </div>
+  <div class="content">
+    <div class="card">
+    <p><button id="otaupdate" class="button">OTA Firmware Refresh</button></p>
+    </div>
+  </div>
   
 <script>
 if (!!window.EventSource) {
@@ -869,6 +901,7 @@ if (!!window.EventSource) {
     document.getElementById('ambienceid').addEventListener('change', handleambience, false);
     document.getElementById('ammoid').addEventListener('change', handleammo, false);
     document.getElementById('resetscores').addEventListener('click', toggle14s);
+    document.getElementById('otaupdate').addEventListener('click', toggle14o);
     document.getElementById('gameover').addEventListener('click', toggle14a);
     document.getElementById('lttoteamid').addEventListener('change', handlelttoteam, false);
     document.getElementById('lttodamageid').addEventListener('change', handlelttodamage, false);
@@ -878,6 +911,9 @@ if (!!window.EventSource) {
   }
   function toggle14s(){
     websocket.send('toggle14s');
+  }
+  function toggle14o(){
+    websocket.send('toggle14o');
   }
   function toggle14a(){
     websocket.send('toggle14a');
@@ -1205,6 +1241,14 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
         BROADCASTESPNOW = true;
       }
     }
+    if (strcmp((char*)data, "toggle14o") == 0) { // game reset
+      Serial.println("OTA Update Mode");
+      EEPROM.write(0, 1); // reset OTA attempts counter
+      EEPROM.commit(); // Store in Flash
+      delay(2000);
+      ESP.restart();
+      //INITIALIZEOTA = true;
+    }
     if (strcmp((char*)data, "toggle14a") == 0) { // game end
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
         DOMINATIONCLOCK = false;
@@ -1324,7 +1368,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
       //debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
       Function = 4;
-      Team = 0; // sets all bases to default to red team
+      Team = 2; // sets all bases to default to red team
       RGBWHITE = true;
       BASECONTINUOUSIRPULSE = false;
       DOMINATIONCLOCK = false; // stops the game from going if already running
@@ -1951,7 +1995,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "401") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = false;
-      COOLINGDOWN = false;
       EEPROM.write(5, 1);
       EEPROM.commit();
       Serial.println("Cool Down Deactivated"); 
@@ -1963,7 +2006,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "402") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 5000;
       EEPROM.write(5, 2);
       EEPROM.commit();
@@ -1978,7 +2020,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "403") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 10000;
       EEPROM.write(5, 3);
       EEPROM.commit();
@@ -1993,7 +2034,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "404") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 15000;
       EEPROM.write(5, 4);
       EEPROM.commit();
@@ -2008,7 +2048,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "405") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 30000;
       EEPROM.write(5, 5);
       EEPROM.commit();
@@ -2023,7 +2062,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "406") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 60000;
       EEPROM.write(5, 6);
       EEPROM.commit();
@@ -2038,7 +2076,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "407") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 120000;
       EEPROM.write(5, 7);
       EEPROM.commit();
@@ -2053,7 +2090,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "408") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 180000;
       EEPROM.write(5, 8);
       EEPROM.commit();
@@ -2068,7 +2104,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "409") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 300000;
       EEPROM.write(5, 9);
       EEPROM.commit();
@@ -2083,7 +2118,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "410") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 600000;
       EEPROM.write(5, 10);
       EEPROM.commit();
@@ -2098,7 +2132,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "411") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       EEPROM.write(5, 11);
       EEPROM.commit();
       CoolDownInterval = 900000;
@@ -2113,7 +2146,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "412") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 1200000;
       EEPROM.write(5, 12);
       EEPROM.commit();
@@ -2128,7 +2160,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "413") == 0) {
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 1800000;
       EEPROM.write(5, 13);
       EEPROM.commit();
@@ -2557,7 +2588,7 @@ void ProcessIncomingCommands() {
       Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
       //debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
       Function = 4;
-      Team = 0; // sets all bases to default to red team
+      Team = 2; // sets all bases to default to red team
       RGBWHITE = true;
       BASECONTINUOUSIRPULSE = false;
       DOMINATIONCLOCK = false; // stops the game from going if already running
@@ -2923,7 +2954,6 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10402) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 5000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2931,7 +2961,6 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10403) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 10000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2939,7 +2968,6 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10404) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 15000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2947,7 +2975,6 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10405) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 30000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2955,7 +2982,6 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10406) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 60000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2963,7 +2989,6 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10407) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 120000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2971,7 +2996,6 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10408) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 180000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2979,7 +3003,6 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10409) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 300000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -2988,14 +3011,12 @@ void ProcessIncomingCommands() {
     if (incomingData2  ==  10410) {
       TAGACTIVATEDIRCOOLDOWN = true;
       CoolDownInterval = 600000;
-      COOLINGDOWN = false;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
       Serial.println(CoolDownInterval);
     }
     if (incomingData2  ==  10411) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 900000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -3003,7 +3024,6 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10412) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 1200000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -3011,7 +3031,6 @@ void ProcessIncomingCommands() {
     }
     if (incomingData2  ==  10413) {
       TAGACTIVATEDIRCOOLDOWN = true;
-      COOLINGDOWN = false;
       CoolDownInterval = 1800000;
       Serial.println("Cool Down Activated"); 
       Serial.print("Cool Down Timer Set to: ");
@@ -3342,27 +3361,27 @@ void rgbblink() {
     RGBState = HIGH;
     if(RGBGREEN) {
       rgbgreen();
-      //Serial.println("Blinking RGB");
+      Serial.println("Blinking RGB");
       }
     if(RGBRED) {
       rgbred();
-      //Serial.println("Blinking RGB");
+      Serial.println("Blinking RGB");
       }
     if(RGBYELLOW) {
       rgbyellow();
-      //Serial.println("Blinking RGB");
+      Serial.println("Blinking RGB");
       }
     if(RGBBLUE) {
       rgbblue();
-      //Serial.println("Blinking RGB");
+      Serial.println("Blinking RGB");
       }
     if(RGBPURPLE) {
       rgbpurple();
-      //Serial.println("Blinking RGB");
+      Serial.println("Blinking RGB");
       }
     if(RGBCYAN) {
       rgbcyan();
-      //Serial.println("Blinking RGB");
+      Serial.println("Blinking RGB");
       }
     if(RGBWHITE) {
       rgbwhite();
@@ -3492,44 +3511,44 @@ void IDplayer() {
         brpid = brpid + 1;
       }
       if (PP[5] > 750) {
-        PID[5] = 1;
+        PID[0] = 1;
         brpid = brpid + 2;
       } else {
-        PID[5] = 0;
+        PID[0] = 0;
       }
       if (PP[4] > 750) {
-        PID[4]=2;
+        PID[1]=2;
         brpid = brpid + 4;
-      } else {
-        PID[4]=0;
-      }
-      if (PP[3] > 750) {
-        PID[3]=4;
-        brpid = brpid + 8;
-        } else {
-        PID[3]=0;
-      }
-      if (PP[2] > 750) {
-        PID[2]=8;
-        brpid = brpid + 16;
-      } else {
-        PID[2]=0;
-      }
-      if (PP[1] > 750) {
-        PID[1]=16;
-        brpid = brpid + 32;
       } else {
         PID[1]=0;
       }
+      if (PP[3] > 750) {
+        PID[2]=4;
+        brpid = brpid + 8;
+        } else {
+        PID[2]=0;
+      }
+      if (PP[2] > 750) {
+        PID[3]=8;
+        brpid = brpid + 16;
+      } else {
+        PID[3]=0;
+      }
+      if (PP[1] > 750) {
+        PID[4]=16;
+        brpid = brpid + 32;
+      } else {
+        PID[4]=0;
+      }
       if (PP[0] > 750) {
-        PID[0]=32;
+        PID[5]=32;
         brpid = brpid + 64;
       } else {
-        PID[0]=0;
+        PID[5]=0;
       }
       // ID Player by summing assigned values above based upon protocol values (1-64)
       PlayerID=PID[0]+PID[1]+PID[2]+PID[3]+PID[4]+PID[5];
-      if (GearMod == 2) {
+      if (GearMod = 2) {
         PlayerID = brpid;
       }
       Serial.print("Player ID = ");
@@ -3702,20 +3721,22 @@ void receiveBRXir() {
           BasicDomination();
         }
         if (TAGACTIVATEDIRCOOLDOWN) {
-          if (COOLINGDOWN) {
-            // this means that the base is on cool down, should send alarm or damage or something buzzzz!!!
-          } else {
+          if (!TAGACTIVATEDIR) {
+            // this means that the base is on cool down, should send alarm or damage or something
+          }
+        }
+        if (TAGACTIVATEDIR) {
+          if (TAGACTIVATEDIRCOOLDOWN) {
+            TAGACTIVATEDIR = false;
             if (ANYTEAM) {
               Team = TeamID;
             }
             CoolDownStart = millis();
             resetRGB();
             RGBRED = true;
-            VerifyCurrentIRTagSelection();
           }
-        }
-        if (TAGACTIVATEDIR) {
           VerifyCurrentIRTagSelection();
+          BUZZ = true;
         }
       } else {
         Serial.println("Protocol not Recognized");
@@ -3866,21 +3887,23 @@ void ReceiveLTTO() {
           if (BASICDOMINATION) {
             BasicDomination();
           }
-          if (TAGACTIVATEDIRCOOLDOWN) {
-            if (COOLINGDOWN) {
-              // this means that the base is on cool down, should send alarm or damage or something buzzzz!!!
-            } else {
+          if (TAGACTIVATEDIR) {
+            if (TAGACTIVATEDIRCOOLDOWN) {
+              TAGACTIVATEDIR = false;
               if (ANYTEAM) {
                 Team = TeamID;
               }
               CoolDownStart = millis();
               resetRGB();
               RGBRED = true;
-              VerifyCurrentIRTagSelection();
             }
-          } 
-          if (TAGACTIVATEDIR) {
             VerifyCurrentIRTagSelection();
+            BUZZ = true;
+          }
+          if (TAGACTIVATEDIRCOOLDOWN) {
+            if (!TAGACTIVATEDIR) {
+              // this means that the base is on cool down, should send alarm or damage or something
+            }
           }
         }
       }
@@ -4180,17 +4203,18 @@ void CaptureTheFlag() { // not set properly yet
   SetIRProtocol();
 }
 void SwapBRX() {
-  //BulletType = 1;
-  //Player = 63;
-  //if (Player == PlayerID) {
-    //Player = random(63);
-  //}
-  //Damage = 1;
-  //Critical = 0;
-  //Power = 1;
-  //SetIRProtocol();
+  BulletType = 1;
+  Player = 63;
+  if (Player == PlayerID) {
+    Player = random(63);
+  }
+  Damage = 1;
+  Critical = 0;
+  Power = 1;
+  SetIRProtocol();
   datapacket1 = PlayerID;
   datapacket2 = 31000;
+  datapacket3 = 99;
   BROADCASTESPNOW = true;
 }
 void MotionSensor() {
@@ -4808,7 +4832,6 @@ void VerifyCurrentIRTagSelection() {
     MedKit(); // sets ir protocol to motion sensor yellow and sends it
   }
   if (LOOTBOX) {
-    digitalWrite(LED_BUILTIN, HIGH);
     SwapBRX(); // sets ir protocol to motion sensor yellow and sends it
   }
   if (ARMORBOOST) {
@@ -4982,6 +5005,100 @@ void PostDominationScore() {
   }
 }
 
+void connect_wifi() {
+  Serial.println("Waiting for WiFi");
+  WiFi.begin(OTAssid.c_str(), OTApassword.c_str());
+  int attemptcounter = 0;
+  while (WiFi.status() != WL_CONNECTED) {
+    delay(500);
+    Serial.print(".");
+    attemptcounter++;
+    if (attemptcounter > 20) {
+      ESP.restart();
+    }
+  }
+
+  Serial.println("");
+  Serial.println("WiFi connected");
+  Serial.println("IP address: ");
+  Serial.println(WiFi.localIP());
+}
+
+void firmwareUpdate(void) {
+  WiFiClientSecure client;
+  client.setCACert(rootCACertificate);
+  httpUpdate.setLedPin(LED_BUILTIN, LOW);
+  t_httpUpdate_return ret = httpUpdate.update(client, URL_fw_Bin);
+
+  switch (ret) {
+  case HTTP_UPDATE_FAILED:
+    Serial.printf("HTTP_UPDATE_FAILD Error (%d): %s\n", httpUpdate.getLastError(), httpUpdate.getLastErrorString().c_str());
+    break;
+
+  case HTTP_UPDATE_NO_UPDATES:
+    Serial.println("HTTP_UPDATE_NO_UPDATES");
+    break;
+
+  case HTTP_UPDATE_OK:
+    Serial.println("HTTP_UPDATE_OK");
+    break;
+  }
+}
+int FirmwareVersionCheck(void) {
+  String payload;
+  int httpCode;
+  String fwurl = "";
+  fwurl += URL_fw_Version;
+  fwurl += "?";
+  fwurl += String(rand());
+  Serial.println(fwurl);
+  WiFiClientSecure * client = new WiFiClientSecure;
+
+  if (client) 
+  {
+    client -> setCACert(rootCACertificate);
+
+    // Add a scoping block for HTTPClient https to make sure it is destroyed before WiFiClientSecure *client is 
+    HTTPClient https;
+
+    if (https.begin( * client, fwurl)) 
+    { // HTTPS      
+      Serial.print("[HTTPS] GET...\n");
+      // start connection and send HTTP header
+      delay(100);
+      httpCode = https.GET();
+      delay(100);
+      if (httpCode == HTTP_CODE_OK) // if version received
+      {
+        payload = https.getString(); // save received version
+      } else {
+        Serial.print("error in downloading version file:");
+        Serial.println(httpCode);
+      }
+      https.end();
+    }
+    delete client;
+  }
+      
+  if (httpCode == HTTP_CODE_OK) // if version received
+  {
+    payload.trim();
+    if (payload.equals(FirmwareVer)) {
+      UPTODATE = true;
+      Serial.printf("\nDevice already on latest firmware version:%s\n", FirmwareVer);
+      return 0;} 
+    else 
+    {
+      EEPROM.write(0, 1); // set up for upgrade confirmation
+      EEPROM.commit(); // store data
+      Serial.println(payload);
+      Serial.println("New firmware detected");
+      
+      return 1;
+    }
+  } 
+  return 0;  
+}
 //******************************************************************************************
 // ***********************************  GAME LOOP  ****************************************
 // *****************************************************************************************
@@ -5006,9 +5123,9 @@ void loop1(void *pvParameters) {
       SINGLEIRPULSE = false;
       VerifyCurrentIRTagSelection();  // runs object for identifying set ir protocol and send it
       ResetAllIRProtocols();
-      //if (CAPTURABLEEMITTER) {
-        //RESPAWNSTATION = true;
-      //}
+      if (CAPTURABLEEMITTER) {
+        RESPAWNSTATION = true;
+      }
       Serial.println("Executed Single IR Pulse Object");
     }
     if (BASECONTINUOUSIRPULSE) {
@@ -5032,11 +5149,11 @@ void loop1(void *pvParameters) {
         receiveBRXir(); // runs the ir receiver, looking for BRP protocol
       }
       if (TAGACTIVATEDIRCOOLDOWN) {
-        if (COOLINGDOWN) {
+        if (!TAGACTIVATEDIR) {
           // Base is in cool down
           if (currentMillis0 - CoolDownStart > CoolDownInterval) {
             // Cool down is over
-            COOLINGDOWN = false;
+            TAGACTIVATEDIR = true;
             resetRGB;
             RGBWHITE = true;
             Serial.println("Cool Down Is Over");
@@ -5204,13 +5321,12 @@ void loop2(void *pvParameters) {
       BroadcastData(); // sending data via ESPNOW
       Serial.println("Sent Data Via ESPNOW");
       ResetReadings();
-      digitalWrite(LED_BUILTIN, LOW);
     }
     if (BASICDOMINATION) {
       if (currentMillis1 - PreviousMillis > 5000) {
         PreviousMillis = currentMillis1;
         UpdateWebApp0();
-        Serial.println("updated scores on web app");
+        //Serial.println("updated scores on web app");
         if (MULTIBASEDOMINATION) {
           datapacket2 = 903;
           datapacket1 = 99;
@@ -5240,6 +5356,50 @@ void setup(){
   // Serial port for debugging purposes
   Serial.begin(115200);
   Serial.println("Serial Monitor Started");
+  //***********************************************************************
+  //***********************************************************************
+  // initialize EEPROM
+  EEPROM.begin(EEPROM_SIZE);
+  int bootstatus = EEPROM.read(0);
+  Serial.print("boot status = ");
+  Serial.println(bootstatus);
+  if (bootstatus > 0) {
+    Serial.println("Enabling OTA Update Mode");
+    EEPROM.write(0, 0);
+    EEPROM.commit();
+    OTAMODE = true;
+  }
+  if (OTAMODE) {
+    Serial.print("Active firmware version:");
+    Serial.println(FirmwareVer);
+    pinMode(LED_BUILTIN, OUTPUT);
+    // Connect to Wi-Fi network with SSID and password
+    Serial.print("Setting AP (Access Point)…");
+    // Remove the password parameter, if you want the AP (Access Point) to be open
+    WiFi.mode(WIFI_AP_STA);
+    WiFi.softAP(ssid, password);
+    IPAddress IP = WiFi.softAPIP();
+    Serial.print("AP IP address: ");
+    Serial.println(IP);
+    Serial.print("ESP Board MAC Address:  ");
+    Serial.println(WiFi.macAddress());
+    Serial.println("Starting ESPNOW");
+    IntializeESPNOW();
+    delay(1000);
+    datapacket1 = 9999;
+    getReadings();
+    BroadcastData(); // sending data via ESPNOW
+    Serial.println("Sent Data Via ESPNOW");
+    ResetReadings();
+    while (OTApassword == "dontchangeme") {
+      vTaskDelay(1);
+    }
+    delay(2000);
+    Serial.println("wifi credentials");
+    Serial.println(OTAssid);
+    Serial.println(OTApassword);
+    connect_wifi();
+  } else {
   //***********************************************************************
   // initialize the RGB pins
   Serial.println("Initializing RGB Pins");
@@ -5332,15 +5492,27 @@ void setup(){
   Serial.println("Starting ESPNOW");
   IntializeESPNOW();
   //***********************************************************************
-  // initialize EEPROM
-  EEPROM.begin(EEPROM_SIZE);
-  //***********************************************************************
   // initialize dual cores and dual loops
   Serial.println(xPortGetCoreID());
   xTaskCreatePinnedToCore(loop1, "loop1", 4096, NULL, 1, NULL, 0);
   xTaskCreatePinnedToCore(loop2, "loop2", 4096, NULL, 1, NULL, 1);
+  }
 } // End of setup.
 
 void loop() {
-  // Empy loop.
+  if (OTAMODE) {
+    static int num=0;
+    unsigned long currentMillis = millis();
+    if ((currentMillis - previousMillis) >= otainterval) {
+      // save the last time you blinked the LED
+      previousMillis = currentMillis;
+      if (FirmwareVersionCheck()) {
+        firmwareUpdate();
+      }
+    }
+    if (UPTODATE) {
+      Serial.println("all good, up to date, lets restart");
+      ESP.restart(); // we confirmed there is no update available, just reset and get ready to play 
+    }
+  }
 }
