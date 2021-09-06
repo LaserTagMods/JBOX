@@ -61,7 +61,7 @@
 #include "cert.h" // used for github security
 
 // define the number of bytes I'm using/accessing for eeprom
-#define EEPROM_SIZE 11
+#define EEPROM_SIZE 101
 
 // serial definitions for LoRa
 #define SERIAL1_RXPIN 19 // TO LORA TX
