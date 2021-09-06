@@ -402,6 +402,10 @@ void getReadings(){
   DataToBroadcast.DP2 = datapacket2;
   DataToBroadcast.DP3 = datapacket3;
   datapacket4.toCharArray(DataToBroadcast.DP4, 200);
+  Serial.println(datapacket1);
+  Serial.println(datapacket2);
+  Serial.println(datapacket3);
+  Serial.println(datapacket4);
 }
 
 void ResetReadings() {
@@ -739,7 +743,7 @@ const char index_html[] PROGMEM = R"rawliteral(
         <option value="413">30 Min.</option>
         </select>
       </p>
-      <h2>Capturabl IR Base Tag Count</h2>
+      <h2>Capturable IR Base Tag Count</h2>
       <p><select name="gametime" id="gametimeid">
         <option value="501">1 Shots</option>
         <option value="502">10 Shots</option>
@@ -829,6 +833,32 @@ const char index_html[] PROGMEM = R"rawliteral(
   <div class="content">
     <div class="card">
     <p><button id="otaupdate" class="button">OTA Firmware Refresh</button></p>
+    <h2>Device ID Assignment</h2>
+      <p><select name="devicename" id="devicenameid">
+        <option value="965">Select JBOX ID</option>
+        <option value="900">JBOX 100</option>
+        <option value="901">JBOX 101</option>
+        <option value="902">JBOX 102</option>
+        <option value="903">JBOX 103</option>
+        <option value="904">JBOX 104</option>
+        <option value="905">JBOX 105</option>
+        <option value="906">JBOX 106</option>
+        <option value="907">JBOX 107</option>
+        <option value="908">JBOX 108</option>
+        <option value="909">JBOX 109</option>
+        <option value="910">JBOX 110</option>
+        <option value="911">JBOX 111</option>
+        <option value="912">JBOX 112</option>
+        <option value="913">JBOX 113</option>
+        <option value="914">JBOX 114</option>
+        <option value="915">JBOX 115</option>
+        <option value="916">JBOX 116</option>
+        <option value="917">JBOX 117</option>
+        <option value="918">JBOX 118</option>
+        <option value="919">JBOX 119</option>
+        <option value="920">JBOX 120</option>
+        </select>
+      </p>
     </div>
   </div>
   
@@ -907,6 +937,7 @@ if (!!window.EventSource) {
     document.getElementById('lttodamageid').addEventListener('change', handlelttodamage, false);
     document.getElementById('lttotypeid').addEventListener('change', handlelttotype, false);
     document.getElementById('deviceid').addEventListener('change', handledevice, false);
+    document.getElementById('devicenameid').addEventListener('change', handledevicename, false);
     
   }
   function toggle14s(){
@@ -961,6 +992,10 @@ if (!!window.EventSource) {
   function handlelttotype() {
     var xo = document.getElementById("lttotypeid").value;
     websocket.send(xo);
+  }
+  function handledevicename() {
+    var xp = document.getElementById("devicenameid").value;
+    websocket.send(xp);
   }
 </script>
 </body>
@@ -1370,7 +1405,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       Function = 4;
       Team = 2; // sets all bases to default to red team
       RGBWHITE = true;
-      BASECONTINUOUSIRPULSE = false;
+      BASECONTINUOUSIRPULSE = true;
       DOMINATIONCLOCK = false; // stops the game from going if already running
       BASICDOMINATION = false; // enables this game mode
       TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
@@ -1777,7 +1812,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       }
     }
     if (strcmp((char*)data, "117") == 0) {
-      EEPROM.write(2, 9);
+      EEPROM.write(2, 17);
       EEPROM.commit();
       if (DeviceSelector == JBOXID || DeviceSelector == 199) {
       ResetAllIRProtocols();
@@ -2460,6 +2495,132 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       Serial.println("Device Selector Change!!!");
       datapacket1 = DeviceSelector;
     }
+    if (strcmp((char*)data, "900") == 0) {
+      JBOXID = 100;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "901") == 0) {
+      JBOXID = 101;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "902") == 0) {
+      JBOXID = 102;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "903") == 0) {
+      JBOXID = 103;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "904") == 0) {
+      JBOXID = 104;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "905") == 0) {
+      JBOXID = 105;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "906") == 0) {
+      JBOXID = 106;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "907") == 0) {
+      JBOXID = 107;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "908") == 0) {
+      JBOXID = 108;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "909") == 0) {
+      JBOXID = 109;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "910") == 0) {
+      JBOXID = 110;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "911") == 0) {
+      JBOXID = 111;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "912") == 0) {
+      JBOXID = 112;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "913") == 0) {
+      JBOXID = 113;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "914") == 0) {
+      JBOXID = 114;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "915") == 0) {
+      JBOXID = 115;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "916") == 0) {
+      JBOXID = 116;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "917") == 0) {
+      JBOXID = 117;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "918") == 0) {
+      JBOXID = 118;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "919") == 0) {
+      JBOXID = 119;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "920") == 0) {
+      JBOXID = 120;
+      Serial.println("JBOX ID changed to: " + String(JBOXID));
+      EEPROM.write(10, JBOXID);
+      EEPROM.commit();
+    }
   }
 }
 
@@ -2590,7 +2751,7 @@ void ProcessIncomingCommands() {
       Function = 4;
       Team = 2; // sets all bases to default to red team
       RGBWHITE = true;
-      BASECONTINUOUSIRPULSE = false;
+      BASECONTINUOUSIRPULSE = true;
       DOMINATIONCLOCK = false; // stops the game from going if already running
       BASICDOMINATION = false; // enables this game mode
       TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
@@ -5250,7 +5411,7 @@ void loop2(void *pvParameters) {
   }
   savedsettings = EEPROM.read(2);
   if (savedsettings > 0) { // checking if the flash has a saved data set
-    // ir emitter type - 16 - 10100
+    // ir emitter type - 17 - 10100
     incomingData2 = EEPROM.read(2);
     incomingData2 = incomingData2 + 10100;
     ProcessIncomingCommands();
@@ -5310,6 +5471,13 @@ void loop2(void *pvParameters) {
     incomingData2 = EEPROM.read(9);
     incomingData2 = incomingData2 + 10150;
     ProcessIncomingCommands();
+    delay(10);
+  }
+  savedsettings = EEPROM.read(10);
+  if (savedsettings > 0) { // checking if the flash has a saved data set
+    // jbox id from 100 to 120
+    JBOXID = EEPROM.read(10);
+    Serial.println("JBOXID = " + String(JBOXID));
     delay(10);
   }
   while (1) { // starts the forever loopws.cleanupClients();
