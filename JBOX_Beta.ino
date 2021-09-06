@@ -36,7 +36,11 @@
  * 6/27/21    - Added in state save for settings so on reset, settings are retained. Uses Flash/EEPROM, so this means that your board may be no good after 100,000 to 1,000,000 setting changes/uses.
  * 6/30/21    - Added a second web server for scoring only, access 192.168.4.1:80/scores
  * 7/1/21     - Added in BRP compatibility for teams red, blue, yellow, green, purple and cyan
- * 
+ * 9/6/21     - fixed a few bugs
+ *            - added in device assignment for jbox-jedge device id list
+ *            - added in eeprom for device id assignment so not lost upon updates
+ *            - added in espnow based respawn function for full radius respawn range in proximity
+ *            - added in wifi credentials inputs for retaining in eeprom
 */
 
 //*************************************************************************
@@ -75,6 +79,10 @@ String FirmwareVer = {"3.10"};
 
 bool OTAMODE = false;
 
+// text inputs
+const char* PARAM_INPUT_1 = "input1";
+const char* PARAM_INPUT_2 = "input2";
+
 void connect_wifi();
 void firmwareUpdate();
 int FirmwareVersionCheck();
@@ -93,7 +101,7 @@ String OTApassword = "dontchangeme"; // Network password for OTA
 //******************** DEVICE SPECIFIC DEFINITIONS ************************
 //*************************************************************************
 // These should be modified as applicable for your needs
-int JBOXID = 101; // this is the gun or player ID, each esp32 needs a different one, set "0-63"
+int JBOXID = 101; // this is the device ID, guns are 0-63, controlle ris 98, jbox is 100-120
 int DeviceSelector = JBOXID;
 int TaggersOwned = 64; // how many taggers do you own or will play?
 // Replace with your network credentials
@@ -859,6 +867,14 @@ const char index_html[] PROGMEM = R"rawliteral(
         <option value="920">JBOX 120</option>
         </select>
       </p>
+      <form action="/get">
+        wifi ssid: <input type="text" name="input1">
+        <input type="submit" value="Submit">
+      </form><br>
+      <form action="/get">
+        wifi pass: <input type="text" name="input2">
+        <input type="submit" value="Submit">
+      </form><br>
     </div>
   </div>
   
@@ -5531,12 +5547,41 @@ void setup(){
   int bootstatus = EEPROM.read(0);
   Serial.print("boot status = ");
   Serial.println(bootstatus);
-  if (bootstatus > 0) {
+  if (bootstatus > 0 && bootstatus < 255) {
     Serial.println("Enabling OTA Update Mode");
     EEPROM.write(0, 0);
     EEPROM.commit();
     OTAMODE = true;
   }
+  
+  // setting up eeprom based SSID:
+  String esid;
+  for (int i = 11; i < 43; ++i)
+  {
+    esid += char(EEPROM.read(i));
+  }
+  Serial.println();
+  Serial.print("SSID: ");
+  Serial.println(esid);
+  Serial.println("Reading EEPROM pass");
+  // Setting up EEPROM Password
+  String epass = "";
+  for (int i = 44; i < 100; ++i)
+  {
+    epass += char(EEPROM.read(i));
+  }
+  Serial.print("PASS: ");
+  Serial.println(epass);
+  // now updating the OTA credentials to match
+  OTAssid = esid;
+  OTApassword = epass;
+  // Connect to Wi-Fi
+  Serial.println("Starting AP");
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.softAP(ssid, password);
+  IPAddress IP = WiFi.softAPIP();
+  Serial.print("AP IP address: ");
+  Serial.println(IP);
   if (OTAMODE) {
     Serial.print("Active firmware version:");
     Serial.println(FirmwareVer);
@@ -5552,17 +5597,17 @@ void setup(){
     Serial.print("ESP Board MAC Address:  ");
     Serial.println(WiFi.macAddress());
     Serial.println("Starting ESPNOW");
-    IntializeESPNOW();
-    delay(1000);
-    datapacket1 = 9999;
-    getReadings();
-    BroadcastData(); // sending data via ESPNOW
-    Serial.println("Sent Data Via ESPNOW");
-    ResetReadings();
-    while (OTApassword == "dontchangeme") {
-      vTaskDelay(1);
-    }
-    delay(2000);
+    //IntializeESPNOW();
+    //delay(1000);
+    //datapacket1 = 9999;
+    //getReadings();
+    //BroadcastData(); // sending data via ESPNOW
+    //Serial.println("Sent Data Via ESPNOW");
+    //ResetReadings();
+    //while (OTApassword == "dontchangeme") {
+      //vTaskDelay(1);
+    //}
+    //delay(2000);
     Serial.println("wifi credentials");
     Serial.println(OTAssid);
     Serial.println(OTApassword);
@@ -5631,6 +5676,7 @@ void setup(){
   Serial.print("AP IP address: ");
   Serial.println(IP);
   //***********************************************************************
+  
   // initialize web server
   initWebSocket();
   // Route for root / web page
@@ -5650,6 +5696,63 @@ void setup(){
       client->send("hello!", NULL, millis(), 10000);
     });
     server.addHandler(&events);
+  // Send a GET request to <ESP_IP>/get?input1=<inputMessage>
+  server.on("/get", HTTP_GET, [] (AsyncWebServerRequest *request) {
+    String inputMessage;
+    String inputParam;
+    // GET input1 value on <ESP_IP>/get?input1=<inputMessage>
+    if (request->hasParam(PARAM_INPUT_1)) {
+      inputMessage = request->getParam(PARAM_INPUT_1)->value();
+      inputParam = PARAM_INPUT_1;
+      OTAssid = inputMessage;
+      Serial.println("clearing eeprom");
+      for (int i = 11; i < 44; ++i) {
+        EEPROM.write(i, 0);
+      }
+      Serial.println("writing eeprom ssid:");
+      int j = 11;
+      for (int i = 0; i < OTAssid.length(); ++i)
+      {
+        EEPROM.write(j, OTAssid[i]);
+        Serial.print("Wrote: ");
+        Serial.println(OTAssid[i]);
+        j++;
+      }
+      EEPROM.commit();
+    }
+    // GET input2 value on <ESP_IP>/get?input2=<inputMessage>
+    else if (request->hasParam(PARAM_INPUT_2)) {
+      inputMessage = request->getParam(PARAM_INPUT_2)->value();
+      inputParam = PARAM_INPUT_2;
+      OTApassword = inputMessage;
+      Serial.println("clearing eeprom");
+      for (int i = 44; i < 100; ++i) {
+        EEPROM.write(i, 0);
+      }
+      Serial.println("writing eeprom Password:");
+      int k = 44;
+      for (int i = 0; i < OTApassword.length(); ++i)
+      {
+        EEPROM.write(k, OTApassword[i]);
+        Serial.print("Wrote: ");
+        Serial.println(OTApassword[i]);
+        k++;
+      }
+      EEPROM.commit();
+    }
+    else {
+      inputMessage = "No message sent";
+      inputParam = "none";
+    }
+    Serial.println(inputMessage);
+    Serial.print("OTA SSID = ");
+    Serial.println(OTAssid);
+    Serial.print("OTA Password = ");
+    Serial.println(OTApassword);
+    request->send(200, "text/html", "HTTP GET request sent to your ESP on input field (" 
+                                     + inputParam + ") with value: " + inputMessage +
+                                     "<br><a href=\"/\">Return to Home Page</a>");
+  });
   // Start server
   server.begin();
   //server1.begin();
