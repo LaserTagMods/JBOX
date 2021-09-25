@@ -41,6 +41,9 @@
  *            - added in eeprom for device id assignment so not lost upon updates
  *            - added in espnow based respawn function for full radius respawn range in proximity
  *            - added in wifi credentials inputs for retaining in eeprom
+ * 9/12/21    - removed excess items from menu options for simplification. need to redo game modes now still
+ * 9/13/21    - prepared the domination/multi functions and ready for testing
+ * 9/17/21    - Added/prepared 5 minute and 10 minute domination games ready for testing
 */
 
 //*************************************************************************
@@ -70,9 +73,9 @@
 //*************************************************************************
 //******************** OTA UPDATES ****************************************
 //*************************************************************************
-String FirmwareVer = {"3.10"};
-#define URL_fw_Version "https://raw.githubusercontent.com/LaserTagMods/autoupdate/main/bin_version.txt"
-#define URL_fw_Bin "https://raw.githubusercontent.com/LaserTagMods/autoupdate/main/fw.bin"
+String FirmwareVer = {"3.11"};
+#define URL_fw_Version "https://raw.githubusercontent.com/LaserTagMods/autoupdate/main/bbin_version.txt"
+#define URL_fw_Bin "https://raw.githubusercontent.com/LaserTagMods/autoupdate/main/jboxfw.bin"
 
 //#define URL_fw_Version "http://cade-make.000webhostapp.com/version.txt"
 //#define URL_fw_Bin "http://cade-make.000webhostapp.com/firmware.bin"
@@ -105,9 +108,8 @@ int JBOXID = 101; // this is the device ID, guns are 0-63, controlle ris 98, jbo
 int DeviceSelector = JBOXID;
 int TaggersOwned = 64; // how many taggers do you own or will play?
 // Replace with your network credentials
-const char* ssid = "JBOX#101";
+String ssid = "JBOX#101";
 const char* password = "123456789";
-
 
 //*************************************************************************
 //******************** VARIABLE DECLARATIONS ******************************
@@ -133,6 +135,10 @@ const int led = 2; // ESP32 Pin to which onboard LED is connected
 unsigned long previousMillis = 0;  // will store last time LED was updated
 unsigned long ledpreviousMillis = 0;  // will store last time LED was updated
 const long ledinterval = 1500;  // interval at which to blink (milliseconds)
+unsigned long currentMillis0 = 0; // used for core 0 counter/timer.
+unsigned long currentMillis1 = 0; // used for core 0 counter/timer.
+unsigned long previousMillis1 = 0;  // will store last time LED was updated
+unsigned long LastScoreUpdate = 0; // for score updates
 
 bool SCORESYNC = false; // used for initializing score syncronization
 int ScoreRequestCounter = 0; // counter used for score syncronization
@@ -171,9 +177,12 @@ int receivecounter = 0;
 unsigned long lorapreviousMillis = 0;
 const long lorainterval = 3000;
 
-// IR RECEIVER VARIABLE DELCARATIONS 
+//*************************************************************************
+//******************** IR RECEIVER VARIABLE DELCARATIONS ******************
+//*************************************************************************
 // Define Variables used for the game functions
-int TeamID=0; // this is for team recognition, team 0 = red, team 1 = blue, team 2 = yellow, team 3 = green
+int TeamID=99; // this is for team recognition, team 0 = red, team 1 = blue, team 2 = yellow, team 3 = green
+int LastPosessionTeam = 99;
 int gamestatus=0; // used to turn the ir reciever procedure on and off
 int PlayerID=0; // used to identify player
 int PID[6]; // used for recording player bits for ID decifering
@@ -190,27 +199,35 @@ int TT[2]; // team bits for decoding team
 int DD[8]; // damage bits for decoding damage
 int CC[1]; // Critical hit on/off from IR
 int UU[2]; // Power bits
-int ZZ[2]; // parity bits depending on number of 1s in ir
+int ZZ[3]; // parity bits depending on number of 1s in ir
 int XX[1]; // bit to used to confirm brx ir is received
 bool ENABLEIRRECEIVER = true; // enables and disables the ir receiver
 
-// GAME VARIABLE DELCARATIONS
+//*************************************************************************
+// ******************* GAME VARIABLE DELCARATIONS *************************
+//*************************************************************************
 // variables for gameplay and scoring:
-int Function = 1; // set as default for basic domination game mode
+int Function = 99; // set as default for basic domination game mode
 int TeamScore[4]; // used to track team score
 int PlayerScore[64]; // used to track individual player score
+int JboxPlayerID[21]; // used for incoming jbox ids for players with posessions
+int JboxTeamID[21]; // used for incoiming jbox ids for teams with posessions
+int JboxInPlay[21]; // used as an identifier to verify if a jbox id is in play or not
 int CapturableEmitterScore[4]; // used for accumulating points for capturability to alter team alignment
 int RequiredCapturableEmitterCounter = 10;
 bool FIVEMINUTEDOMINATION = false;
 bool TENMINUTEDOMINATION = false;
 bool FIVEMINUTETUGOWAR = false;
+bool NEWTAGRECEIVED = false;
+bool UPDATEWEPAPP = false;
+bool GAMEOVER = false;
 int CurrentDominationLeader = 99;
 int PreviousDominationLeader = 99;
 
 long PreviousDominationClock = 0;
 
 bool MULTIBASEDOMINATION = false;
-bool BASICDOMINATION = true; // a default game mode
+bool BASICDOMINATION = false; // a default game mode
 bool CAPTURETHEFLAGMODE = false;
 bool DOMINATIONCLOCK = false;
 bool POSTDOMINATIONSCORETOBLYNK = false;
@@ -490,7 +507,6 @@ JSONVar board;
 
 // Create AsyncWebServer object on port 80
 AsyncWebServer server(80);
-//AsyncWebServer server1(81);
 AsyncWebSocket ws("/ws");
 AsyncEventSource events("/events");
 
@@ -662,141 +678,35 @@ const char index_html[] PROGMEM = R"rawliteral(
   </div>
   <div class="content">
     <div class="card">
-      <h2>Device Selector</h2>
-      <p><select name="device" id="deviceid">
-        <option value="899">This JBOX</option>
-        <option value="898">All JBOXes</option>
-        <option value="800">JBOX00</option>
-        <option value="801">JBOX01</option>
-        <option value="802">JBOX02</option>
-        <option value="803">JBOX03</option>
-        <option value="804">JBOX04</option>
-        <option value="805">JBOX05</option>
-        <option value="806">JBOX06</option>
-        <option value="807">JBOX07</option>
-        <option value="808">JBOX08</option>
-        <option value="809">JBOX09</option>
+      <h2>Gear Selector</h2>
+      <p><select name="Gear" id="GearID">
+        <option value="100">BRX</option>
+        <option value="101">Evolver</option>
         </select>
       </p>
       <h2>Primary Function</h2>
       <p><select name="primary" id="primaryid">
-        <option value="1">Basic Domination</option>
-        <option value="5">5 Minute Domination</option>
-        <option value="6">10 Minute Domination</option>
-        <option value="7">5 Minute Tug of War</option>
-        <option value="8">Capture The Flag</option>
-        <option value="9">10 Minute Domination (multi base)</option>
-        <option value="10">Own The Zone</option>
-        <option value="2">Continuous IR Emitter</option>
-        <option value="3">Tag Activated IR Emitter</option>
-        <option value="4">Capturable Continuous IR Emitter</option>
+        <option value="0">Basic Domination</option>
+        <option value="1">5 Minute Domination</option>
+        <option value="2">10 Minute Domination</option>
+        <option value="3">Shots Accumulator</option>
+        <option value="4a">Capture The Flag - Red</option>
+        <option value="4b">Capture The Flag - Blue</option>
+        <option value="4c">Capture The Flag - Yellow</option>
+        <option value="4d">Capture The Flag - Green</option>
+        <option value="5">Respawn Station - Red</option>
+        <option value="6">Respawn Station - Blue</option>
+        <option value="7">Respawn Station - Green</option>
+        <option value="8">Respawn Station - Yellow</option>
+        <option value="9">Capturable Respawn Station</option>
+        <option value="10">Loot Box</option>
+        <option value="11">Own The Zone</option>
+        <option value="12">Gas Drone - 5 Minute</option>
+        <option value="13">Proximity Mine Drone - 1 Minute</option>
+        <option value="14">Proximity Alarm - 10 Minutes</option>
         </select>
       </p>
-      <h2>IR Emitter Type</h2>
-      <p><select name="secondary" id="secondaryid">
-        <option value="101">Motion Sensor</option>
-        <option value="102">Capture the Flag</option>
-        <option value="103">Control Point Lost</option>
-        <option value="104">Gas Grenade</option>
-        <option value="105">Light Damage</option>
-        <option value="106">Medium Damage</option>
-        <option value="107">Heavy Damage</option>
-        <option value="108">Explosive Damage</option>
-        <option value="109">IR Respawn Station</option>
-        <option value="117">ESPNOW Respawn Station</option>
-        <option value="110">Med Kit</option>
-        <option value="111">Loot Box</option>
-        <option value="112">Armor Boost</option>
-        <option value="113">Sheilds Boost</option>
-        <option value="114">Own the Zone</option>
-        <option value="115">Control Point Captured</option>
-        <option value="116">Customizable LTTO Tag(settings below)</option>
-        </select>
-      </p>
-      <h2>Team Friendly/Alignment Settings</h2>
-      <p><select name="ammo" id="ammoid">
-        <option value="201">Unspecified</option>
-        <option value="202">Red/Alpha</option>
-        <option value="203">Blue/Bravo</option>
-        <option value="204">Yellow/Charlie</option>
-        <option value="205">Green/Delta</option>
-        </select>
-      </p>
-      <h2>Continuous IR Emitter Frequency</h2>
-      <p><select name="MeleeSetting" id="meleesettingid">
-        <option value="301">1 Sec.</option>
-        <option value="302">2 Sec.</option>
-        <option value="303">3 Sec.</option>
-        <option value="304">5 Sec.</option>
-        <option value="305">10 Sec.</option>
-        <option value="306">15 Sec.</option>
-        <option value="307">30 Sec.</option>
-        <option value="308">60 Sec.</option>
-        </select>
-      </p>
-      <h2>Tag Activated IR Cool Down</h2>
-      <p><select name="playerlives" id="playerlivesid">
-        <option value="401">Off/NA</option>
-        <option value="402">5 Sec.</option>
-        <option value="403">10 Sec.</option>
-        <option value="404">15 Sec.</option>
-        <option value="405">30 Sec.</option>
-        <option value="406">60 Sec.</option>
-        <option value="407">2 Min.</option>
-        <option value="408">3 Min.</option>
-        <option value="409">5 Min.</option>
-        <option value="410">10 Min.</option>
-        <option value="411">15 Min.</option>
-        <option value="412">20 Min.</option>
-        <option value="413">30 Min.</option>
-        </select>
-      </p>
-      <h2>Capturable IR Base Tag Count</h2>
-      <p><select name="gametime" id="gametimeid">
-        <option value="501">1 Shots</option>
-        <option value="502">10 Shots</option>
-        <option value="503">15 Shots</option>
-        <option value="504">30 Shots</option>
-        <option value="505">60 Shots</option>
-        <option value="506">100 Shots</option>
-        <option value="507">150 Shots</option>
-        <option value="508">300 Shots</option>
-        <option value="509">500 Shots</option>
-        <option value="510">1000 Shots</option>
-        </select>
-      </p>
-      <h2>Gear Compatibility Selector</h2>
-      <p><select name="ambience" id="ambienceid">
-        <option value="601">BRX</option>
-        <option value="602">LTTO</option>
-        <option value="603">Battle Rifle Pro</option>
-        </select>
-      </p>
-      <h2>Customized LTTO Tag</h2>
-      <p><select name="lttotype" id="lttotypeid">
-        <option value="700">Select Custom LTTO Tag</option>
-        <option value="701">Hosted Game</option>
-        <option value="702">Grab & Go Game</option>
-        <option value="703">Respawn</option>
-        <option value="704">Own the Zone</option>
-        </select>
-        <select name="lttoteam" id="lttoteamid">
-        <option value="206">Select Team</option>
-        <option value="202">Solo</option>
-        <option value="203">Team 1</option>
-        <option value="204">Team 2</option>
-        <option value="205">Team 3</option>
-        </select>
-        <select name="lttodamage" id="lttodamageid">
-        <option value="t20">Tag Count</option>
-        <option value="t21">One</option>
-        <option value="t22">Two</option>
-        <option value="t23">Three</option>
-        <option value="t24">Four</option>
-        </select>
-      </p>
-      <p><button id="gameover" class="button">End Game</button></p>
-      <p><button id="resetscores" class="button">Reset Scores</button></p>
+      <p><button id="resetscores" class="button">Reset Domination Scores</button></p>
     </div>
   </div>
   <div class="stopnav">
@@ -805,19 +715,19 @@ const char index_html[] PROGMEM = R"rawliteral(
   <div class="scontent">
     <div class="scards">
       <div class="scard red">
-        <h4>Alpha Team - LTTO Solo</h4>
+        <h4>Alpha Team</h4>
         <p><span class="reading"> Points:<span id="to0"></span></p>
       </div>
       <div class="scard blue">
-        <h4>Bravo Team - LTTO Team 1</h4><p>
+        <h4>Bravo Team</h4><p>
         <p><span class="reading"> Points:<span id="to1"></span></p>
       </div>
       <div class="scard yellow">
-        <h4>Charlie Team - LTTO Team 2</h4>
+        <h4>Charlie Team</h4>
         <p><span class="reading"> Points:<span id="to2"></span></p>
       </div>
       <div class="scard green">
-        <h4>Delta Team - LTTO Team 3</h4>
+        <h4>Delta Team</h4>
         <p><span class="reading"> Points:<span id="to3"></span></p>
       </div>
     </div>
@@ -939,20 +849,10 @@ if (!!window.EventSource) {
     initButton();
   }
   function initButton() {
+    document.getElementById('GearID').addEventListener('change', handlegear, false);
     document.getElementById('primaryid').addEventListener('change', handleprimary, false);
-    document.getElementById('secondaryid').addEventListener('change', handlesecondary, false);
-    document.getElementById('meleesettingid').addEventListener('change', handlemelee, false);
-    document.getElementById('playerlivesid').addEventListener('change', handlelives, false);
-    document.getElementById('gametimeid').addEventListener('change', handlegametime, false);
-    document.getElementById('ambienceid').addEventListener('change', handleambience, false);
-    document.getElementById('ammoid').addEventListener('change', handleammo, false);
     document.getElementById('resetscores').addEventListener('click', toggle14s);
     document.getElementById('otaupdate').addEventListener('click', toggle14o);
-    document.getElementById('gameover').addEventListener('click', toggle14a);
-    document.getElementById('lttoteamid').addEventListener('change', handlelttoteam, false);
-    document.getElementById('lttodamageid').addEventListener('change', handlelttodamage, false);
-    document.getElementById('lttotypeid').addEventListener('change', handlelttotype, false);
-    document.getElementById('deviceid').addEventListener('change', handledevice, false);
     document.getElementById('devicenameid').addEventListener('change', handledevicename, false);
     
   }
@@ -962,52 +862,13 @@ if (!!window.EventSource) {
   function toggle14o(){
     websocket.send('toggle14o');
   }
-  function toggle14a(){
-    websocket.send('toggle14a');
+  function handlegear() {
+    var xb = document.getElementById("GearID").value;
+    websocket.send(xb);
   }
   function handleprimary() {
     var xa = document.getElementById("primaryid").value;
     websocket.send(xa);
-  }
-  function handlesecondary() {
-    var xb = document.getElementById("secondaryid").value;
-    websocket.send(xb);
-  }
-  function handlemelee() {
-    var xc = document.getElementById("meleesettingid").value;
-    websocket.send(xc);
-  }
-  function handledevice() {
-    var xd = document.getElementById("deviceid").value;
-    websocket.send(xd);
-  }
-  function handlelives() {
-    var xe = document.getElementById("playerlivesid").value;
-    websocket.send(xe);
-  }
-  function handlegametime() {
-    var xf = document.getElementById("gametimeid").value;
-    websocket.send(xf);
-  }
-  function handleambience() {
-    var xg = document.getElementById("ambienceid").value;
-    websocket.send(xg);
-  }
-  function handleammo() {
-    var xl = document.getElementById("ammoid").value;
-    websocket.send(xl);
-  }
-  function handlelttoteam() {
-    var xm = document.getElementById("lttoteamid").value;
-    websocket.send(xm);
-  }
-  function handlelttodamage() {
-    var xn = document.getElementById("lttodamageid").value;
-    websocket.send(xn);
-  }
-  function handlelttotype() {
-    var xo = document.getElementById("lttotypeid").value;
-    websocket.send(xo);
   }
   function handledevicename() {
     var xp = document.getElementById("devicenameid").value;
@@ -1018,258 +879,6 @@ if (!!window.EventSource) {
 </html>
 )rawliteral";
 
-const char index1_html[] PROGMEM = R"rawliteral(
-<!DOCTYPE HTML><html>
-<head>
-  <title>ESP Web Server</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="icon" href="data:,">
-  <style>
-  html {
-    font-family: Arial;
-    display: inline-block;
-    text-align: center;
-  }
-  p {  font-size: 1.2rem;}
-  h1 {
-    font-size: 1.8rem;
-    color: white;
-  }
-  h2{
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #143642;
-  }
-  .topnav {
-    overflow: hidden;
-    background-color: #143642;
-  }
-  body {
-    margin: 0;
-  }
-  .content {
-    padding: 30px;
-    max-width: 600px;
-    margin: 0 auto;
-  }
-  .card {
-    background-color: #F8F7F9;;
-    box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);
-    padding-top:10px;
-    padding-bottom:20px;
-  }
-  .button {
-    padding: 15px 50px;
-    font-size: 24px;
-    text-align: center;
-    outline: none;
-    color: #fff;
-    background-color: #0f8b8d;
-    border: none;
-    border-radius: 5px;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    -khtml-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-    -webkit-tap-highlight-color: rgba(0,0,0,0);
-   }
-   /*.button:hover {background-color: #0f8b8d}*/
-   .button:active {
-     background-color: #0f8b8d;
-     box-shadow: 2 2px #CDCDCD;
-     transform: translateY(2px);
-   }
-   .state {
-     font-size: 1.5rem;
-     color:#8c8c8c;
-     font-weight: bold;
-   }
-   .stopnav { overflow: hidden; background-color: #2f4468; color: white; font-size: 1.7rem; }
-   .scontent { padding: 20px; }
-   .scard { background-color: white; box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5); }
-   .scards { max-width: 700px; margin: 0 auto; display: grid; grid-gap: 2rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-   .sreading { font-size: 2.8rem; }
-   .spacket { color: #bebebe; }
-   .scard.red { color: #FC0000; }
-   .scard.blue { color: #003DFC; }
-   .scard.yellow { color: #E5D200; }
-   .scard.green { color: #00D02C; }
-   .scard.black { color: #000000; }
-  </style>
-<title>JEDGE 3.0</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
-</head>
-<body>
-  <div class="stopnav">
-    <h3>Score Reporting</h3>
-  </div>
-  <div class="scontent">
-    <div class="scards">
-      <div class="scard red">
-        <h4>Alpha Team - LTTO Solo</h4>
-        <p><span class="reading"> Points:<span id="to0"></span></p>
-      </div>
-      <div class="scard blue">
-        <h4>Bravo Team - LTTO Team 1</h4><p>
-        <p><span class="reading"> Points:<span id="to1"></span></p>
-      </div>
-      <div class="scard yellow">
-        <h4>Charlie Team - LTTO Team 2</h4>
-        <p><span class="reading"> Points:<span id="to2"></span></p>
-      </div>
-      <div class="scard green">
-        <h4>Delta Team - LTTO Team 3</h4>
-        <p><span class="reading"> Points:<span id="to3"></span></p>
-      </div>
-    </div>
-  </div>
-  <div class="stopnav">
-    <h3>Game Highlights</h3>
-  </div>
-  <div class="scontent">
-    <div class="scards">
-      <div class="scard black">
-      <h2>Most Points</h2>
-        <p><span class="reading">Player <span id="MO0"></span><span class="reading"> : <span id="MO10"></span></p>
-        <p><span class="reading">Player <span id="MO1"></span><span class="reading"> : <span id="MO11"></span></p>
-        <p><span class="reading">Player <span id="MO2"></span><span class="reading"> : <span id="MO12"></span></p>
-      </div>
-    </div>
-  </div>
-  
-<script>
-if (!!window.EventSource) {
- var source = new EventSource('/events');
- 
- source.addEventListener('open', function(e) {
-  console.log("Events Connected");
- }, false);
- source.addEventListener('error', function(e) {
-  if (e.target.readyState != EventSource.OPEN) {
-    console.log("Events Disconnected");
-  }
- }, false);
- 
- source.addEventListener('message', function(e) {
-  console.log("message", e.data);
- }, false);
- 
- source.addEventListener('new_readings', function(e) {
-  console.log("new_readings", e.data);
-  var obj = JSON.parse(e.data);
-  document.getElementById("to0").innerHTML = obj.temporaryteamobjectives0;
-  document.getElementById("to1").innerHTML = obj.temporaryteamobjectives1;
-  document.getElementById("to2").innerHTML = obj.temporaryteamobjectives2; 
-  document.getElementById("to3").innerHTML = obj.temporaryteamobjectives3;
-  
-  document.getElementById("MO0").innerHTML = obj.ObjectiveLeader0;
-  document.getElementById("MO10").innerHTML = obj.Leader0Objectives;
-  document.getElementById("MO1").innerHTML = obj.ObjectiveLeader1;
-  document.getElementById("MO11").innerHTML = obj.Leader1Objectives;
-  document.getElementById("MO2").innerHTML = obj.ObjectiveLeader2;
-  document.getElementById("MO12").innerHTML = obj.Leader2Objectives;
-
- }, false);
-}
-  var gateway = `ws://${window.location.hostname}/ws`;
-  var websocket;
-  window.addEventListener('load', onLoad);
-  function initWebSocket() {
-    console.log('Trying to open a WebSocket connection...');
-    websocket = new WebSocket(gateway);
-    websocket.onopen    = onOpen;
-    websocket.onclose   = onClose;
-    websocket.onmessage = onMessage; // <-- add this line
-  }
-  function onOpen(event) {
-    console.log('Connection opened');
-  }
-  function onClose(event) {
-    console.log('Connection closed');
-    setTimeout(initWebSocket, 2000);
-  }
-  function onMessage(event) {
-    var state;
-    
-  }
-  
-  function onLoad(event) {
-    initWebSocket();
-    initButton();
-  }
-  function initButton() {
-    document.getElementById('primaryid').addEventListener('change', handleprimary, false);
-    document.getElementById('secondaryid').addEventListener('change', handlesecondary, false);
-    document.getElementById('meleesettingid').addEventListener('change', handlemelee, false);
-    document.getElementById('playerlivesid').addEventListener('change', handlelives, false);
-    document.getElementById('gametimeid').addEventListener('change', handlegametime, false);
-    document.getElementById('ambienceid').addEventListener('change', handleambience, false);
-    document.getElementById('ammoid').addEventListener('change', handleammo, false);
-    document.getElementById('resetscores').addEventListener('click', toggle14s);
-    document.getElementById('gameover').addEventListener('click', toggle14a);
-    document.getElementById('lttoteamid').addEventListener('change', handlelttoteam, false);
-    document.getElementById('lttodamageid').addEventListener('change', handlelttodamage, false);
-    document.getElementById('lttotypeid').addEventListener('change', handlelttotype, false);
-    document.getElementById('deviceid').addEventListener('change', handledevice, false);
-    
-  }
-  function toggle14s(){
-    websocket.send('toggle14s');
-  }
-  function toggle14a(){
-    websocket.send('toggle14a');
-  }
-  function handleprimary() {
-    var xa = document.getElementById("primaryid").value;
-    websocket.send(xa);
-  }
-  function handlesecondary() {
-    var xb = document.getElementById("secondaryid").value;
-    websocket.send(xb);
-  }
-  function handlemelee() {
-    var xc = document.getElementById("meleesettingid").value;
-    websocket.send(xc);
-  }
-  function handledevice() {
-    var xd = document.getElementById("deviceid").value;
-    websocket.send(xd);
-  }
-  function handlelives() {
-    var xe = document.getElementById("playerlivesid").value;
-    websocket.send(xe);
-  }
-  function handlegametime() {
-    var xf = document.getElementById("gametimeid").value;
-    websocket.send(xf);
-  }
-  function handleambience() {
-    var xg = document.getElementById("ambienceid").value;
-    websocket.send(xg);
-  }
-  function handleammo() {
-    var xl = document.getElementById("ammoid").value;
-    websocket.send(xl);
-  }
-  function handlelttoteam() {
-    var xm = document.getElementById("lttoteamid").value;
-    websocket.send(xm);
-  }
-  function handlelttodamage() {
-    var xn = document.getElementById("lttodamageid").value;
-    websocket.send(xn);
-  }
-  function handlelttotype() {
-    var xo = document.getElementById("lttotypeid").value;
-    websocket.send(xo);
-  }
-</script>
-</body>
-</html>
-)rawliteral";
 
 void notifyClients() {
   ws.textAll(String(ledState));
@@ -1284,15 +893,11 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
   if (info->final && info->index == 0 && info->len == len && info->opcode == WS_TEXT) {
     data[len] = 0;
     if (strcmp((char*)data, "toggle14s") == 0) { // game reset
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-        ResetScores();
-      }
-      if (DeviceSelector != JBOXID) {
-        datapacket2 = 10801;
-        BROADCASTESPNOW = true;
-      }
+      Serial.println("reset scores button pressed");
+      ResetScores();
+      // need to send a command to stop and reset other domination boxes as well
     }
-    if (strcmp((char*)data, "toggle14o") == 0) { // game reset
+    if (strcmp((char*)data, "toggle14o") == 0) { // update firmware
       Serial.println("OTA Update Mode");
       EEPROM.write(0, 1); // reset OTA attempts counter
       EEPROM.commit(); // Store in Flash
@@ -1300,1216 +905,145 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       ESP.restart();
       //INITIALIZEOTA = true;
     }
-    if (strcmp((char*)data, "toggle14a") == 0) { // game end
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-        DOMINATIONCLOCK = false;
-        UpdateWebApp0();
-        UpdateWebApp2();
-      }
-      if (DeviceSelector != JBOXID) {
-        datapacket2 = 10802;
-        BROADCASTESPNOW = true;
-      }
+    if (strcmp((char*)data, "0") == 0) {
+      Function = 0;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Basic Domination");
     }
     if (strcmp((char*)data, "1") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      EEPROM.write(1, 1);
-      EEPROM.commit();
-      // default domination mode that provides both player scoring and team scoring
-      // Scoring reports over BLE to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("Basic Domination Mode - Default!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
       Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = true; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = true; // enables control point captured call out
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-      }
-      if (DeviceSelector != JBOXID) {
-        datapacket2 = 10001;
-        BROADCASTESPNOW = true;
-      }
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("5 Minute Basic Domination");
     }
     if (strcmp((char*)data, "2") == 0) {
-      EEPROM.write(1, 2);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
-      // Then activates a default interval spaced broadcast of a tag of choice.
-      // The tag of choice will need to be selected otherwise motion sensor is broadcasted.
-      // This is good for use as a respawn station that requires no button or trigger
-      // mechanism to activate. The default delay is two seconds but can be modified
-      // by another setting option in the application. Another use is a proximity detector or mine.
-      Serial.println("Continuous IR Emitter!!!");
-      //debugmonitor.println("Continuous IR Emitter!!!");
       Function = 2;
-      Team = 2;
-      RGBGREEN = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      BASECONTINUOUSIRPULSE = true;
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = false; // enables this game mode
-      ResetAllIRProtocols(); // Resets all ir protocols
-      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
-      ENABLEIRRECEIVER = false; // deactivates the ir receiver to avoid unnecessary processes
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10002;
-        BROADCASTESPNOW = true;
-      }
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("10 Minute Basic Domination");
     }
     if (strcmp((char*)data, "3") == 0) {
-      EEPROM.write(1, 3);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      // Clears out any existing IR and Base Game Settings
-      // Sets Default for tag activation to send an IR emitter protocol for "motion sensor" as default
-      // 
-      Serial.println("Tage Activated IR Emitter!!!");
-      //debugmonitor.println("Tage Activated IR Emitter!!!");
       Function = 3;
-      Team = 2;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      BASECONTINUOUSIRPULSE = false;
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = false; // enables this game mode
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
-      ResetAllIRProtocols(); // resets all ir protocols
-      MOTIONSENSOR = true; // enables the alarm sound tag protocol 
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10003;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "4") == 0) {
-      EEPROM.write(1, 4);
+      ResetScores();
+      EEPROM.write(1, Function);
       EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      // Clears out existing settings
-      // Sets default Continuous Emitter Tag to Respwan Station As Default
-      // Creates A Counter for Capturability by Shots (default is 10, change default to desired count) 
-      // Enable IR Activated Capturability to switch team friendly setting to last captured    
-      // bases start out as default red team
-      // recommend doing a delay for respawn time to limit players ability to respawn right away on a base they may be guarding
-      Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
-      //debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
-      Function = 4;
-      Team = 2; // sets all bases to default to red team
-      RGBWHITE = true;
-      BASECONTINUOUSIRPULSE = true;
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = false; // enables this game mode
-      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
-      ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
-      ResetAllIRProtocols(); // reset all ir protocols
-      RESPAWNSTATION = true; // enables the alarm sound tag protocol
-      CAPTURABLEEMITTER = true; // enables the team freindly to be toggled via IR  
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10004;
-        BROADCASTESPNOW = true;
-      }
+      Serial.println("Shot Accumulator Mode");
+    }
+    if (strcmp((char*)data, "4a") == 0) {
+      Function = 40;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Capture The Flag - red");
+    }
+    if (strcmp((char*)data, "4b") == 0) {
+      Function = 41;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Capture The Flag - blue");
+    }
+    if (strcmp((char*)data, "4c") == 0) {
+      Function = 42;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Capture The Flag - yellow");
+    }
+    if (strcmp((char*)data, "4d") == 0) {
+      Function = 43;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Capture The Flag - yellow");
     }
     if (strcmp((char*)data, "5") == 0) {
-      EEPROM.write(1, 5);
+      Function = 5;
+      ResetScores();
+      EEPROM.write(1, Function);
       EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      // 5 Minute domination mode that provides both player scoring and team scoring
-      // Scoring reports over webserver to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("5 Min Domination Mode - Default!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
-      Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = true; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = true; // enables control point captured call out
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = true;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false; 
-      CAPTURETHEFLAGMODE = false; 
-      MULTIBASEDOMINATION = false;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10005;
-        BROADCASTESPNOW = true;
-      }
+      Serial.println("Respawn Station - Red");
     }
     if (strcmp((char*)data, "6") == 0) {
-      EEPROM.write(1, 6);
+      Function = 6;
+      ResetScores();
+      EEPROM.write(1, Function);
       EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      // 10 Minute domination mode that provides both player scoring and team scoring
-      // Scoring reports over webserver to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("10 min Domination Mode - Default!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
-      Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = true; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = true; // enables control point captured call out
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = true;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10006;
-        BROADCASTESPNOW = true;
-      }
+      Serial.println("Respawn Station Blue ");
     }
     if (strcmp((char*)data, "7") == 0) {
-      EEPROM.write(1, 7);
+      Function = 7;
+      ResetScores();
+      EEPROM.write(1, Function);
       EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      // 5 Minute tug o war domination mode that provides both player scoring and team scoring
-      // Scoring reports over webserver to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("5 min Tug of War Domination Mode - Default!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
-      Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = true; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = true; // enables control point captured call out
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = true;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = true;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10007;
-        BROADCASTESPNOW = true;
-      }
+      Serial.println("Respawn Station Green ");
     }
     if (strcmp((char*)data, "8") == 0) {
-      EEPROM.write(1, 8);
+      Function = 8;
+      ResetScores();
+      EEPROM.write(1, Function);
       EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      // 5 Minute tug o war domination mode that provides both player scoring and team scoring
-      // Scoring reports over webserver to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("Capture the flag mode!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
-      Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = false; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = false; // enables control point captured call out
-      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = true;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = true;
-      MULTIBASEDOMINATION = false;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10008;
-        BROADCASTESPNOW = true;
-      }
+      Serial.println("Respawn Station Yellow");
     }
     if (strcmp((char*)data, "9") == 0) {
-      EEPROM.write(1, 9);
+      Function = 9;
+      ResetScores();
+      EEPROM.write(1, Function);
       EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      // 10 Minute domination mode that provides both player scoring and team scoring
-      // Scoring reports over webserver to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("10 min Domination Mode - Multi Bases!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
-      Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = true; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = true; // enables control point captured call out
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = true;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10009;
-        BROADCASTESPNOW = true;
-      }
+      Serial.println("Capturable Respawn Station");
     }
     if (strcmp((char*)data, "10") == 0) {
-      EEPROM.write(1, 10);
+      Function = 10;
+      ResetScores();
+      EEPROM.write(1, Function);
       EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      // Own The Zone Mode sends the IR and zone espnow beacon to add objective points to player/teams
-      // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
-      // Clears out existing settings
-      // Sets default Continuous Emitter Tag to Respwan Station As Default
-      // Creates A Counter for Capturability by Shots (default is 10, change default to desired count) 
-      // Enable IR Activated Capturability to switch team friendly setting to last captured    
-      // bases start out as default red team
-      // recommend doing a delay for respawn time to limit players ability to respawn right away on a base they may be guarding
-      Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
-      //debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
-      Function = 4;
-      Team = 2; // sets all bases to default to red team
-      RGBWHITE = true;
-      BASECONTINUOUSIRPULSE = false;
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = false; // enables this game mode
-      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
-      ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
-      ResetAllIRProtocols(); // reset all ir protocols
-      OWNTHEZONE = true; // enables the ZONE TAG IR protocol
-      CAPTURABLEEMITTER = true; // enables the team freindly to be toggled via IR  
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-      irledinterval = 15000;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10004;
-        BROADCASTESPNOW = true;
-      }
+      Serial.println("Own The Zone");
+    }
+    if (strcmp((char*)data, "11") == 0) {
+      Function = 11;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Gas Drone");
+    }
+    if (strcmp((char*)data, "12") == 0) {
+      Function = 12;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Gas Drone - 5 minutes");
+    }
+    if (strcmp((char*)data, "13") == 0) {
+      Function = 13;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Proximity Mine - 1 Minute");
+    }
+    if (strcmp((char*)data, "14") == 0) {
+      Function = 14;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Proximity Alarm - 10 minutes");
+    }
+    if (strcmp((char*)data, "100") == 0) {
+      GearMod = 0;
+      ResetScores();
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRX");
     }
     if (strcmp((char*)data, "101") == 0) {
-      EEPROM.write(2, 1);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      MOTIONSENSOR = true;
-      Serial.println("Motion Sensor Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10101;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "102") == 0) {
-      EEPROM.write(2, 2);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      CAPTURETHEFLAG = true;
-      Serial.println("Capture the Flag Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10102;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "103") == 0) {
-      EEPROM.write(2, 3);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      CONTROLPOINTLOST = true;
-      Serial.println("Control Point Lost Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10103;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "104") == 0) {
-      EEPROM.write(2, 4);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      GASGRENADE = true;
-      Serial.println("Gas Grenade Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10104;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "105") == 0) {
-      EEPROM.write(2, 5);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      LIGHTDAMAGE = true;
-      Serial.println("Light Damage Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10105;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "106") == 0) {
-      EEPROM.write(2, 6);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      MEDIUMDAMAGE = true;
-      Serial.println("Medium Damage Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10106;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "107") == 0) {
-      EEPROM.write(2, 7);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      HEAVYDAMAGE = true;
-      Serial.println("Heavy Damage Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10107;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "108") == 0) {
-      EEPROM.write(2, 8);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      FRAG = true;
-      Serial.println("Explosive Damage Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10108;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "109") == 0) {
-      EEPROM.write(2, 9);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      RESPAWNSTATION = true;
-      Serial.println("Respawn Station Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10109;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "110") == 0) {
-      EEPROM.write(2, 10);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      MEDKIT = true;
-      Serial.println("Medkit Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10110;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "112") == 0) {
-      EEPROM.write(2, 12);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      ARMORBOOST = true;
-      Serial.println("Armor Boost Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10112;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "113") == 0) {
-      EEPROM.write(2, 13);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      SHEILDS = true;
-      Serial.println("Sheilds Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10113;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "111") == 0) {
-      EEPROM.write(2, 11);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      LOOTBOX = true;
-      Serial.println("Loot Box Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10111;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "114") == 0) {
-      EEPROM.write(2, 14);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      OWNTHEZONE = true;
-      Serial.println("Own The Zone Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10114;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "115") == 0) {
-      EEPROM.write(2, 15);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      CONTROLPOINTCAPTURED = true;
-      Serial.println("Control Point Captured Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10115;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "116") == 0) {
-      EEPROM.write(2, 16);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      CUSTOMLTTOTAG = true;
-      Serial.println("LTTO Customizer Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10116;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "117") == 0) {
-      EEPROM.write(2, 17);
-      EEPROM.commit();
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      ResetAllIRProtocols();
-      WRESPAWNSTATION = true;
-      Serial.println("ESPNOW Respawn Station Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10117;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "t21") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      //ResetAllIRProtocols();
-      LTTODamage = 1;
-      EEPROM.write(9, 1);
-      EEPROM.commit();
-      Serial.println("Tags set to 1!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10151;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "t22") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      //ResetAllIRProtocols();
-      LTTODamage = 1;
-      EEPROM.write(9, 2);
-      EEPROM.commit();
-      Serial.println("Tags set to 2!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10152;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "t23") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      //ResetAllIRProtocols();
-      LTTODamage = 1;
-      EEPROM.write(9, 3);
-      EEPROM.commit();
-      Serial.println("Tags set to 3!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10153;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "t24") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      //ResetAllIRProtocols();
-      LTTODamage = 1;
-      EEPROM.write(9, 4);
-      EEPROM.commit();
-      Serial.println("Tags set to 4!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10154;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "201") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      Team = 2;
-      RGBWHITE = true;
-      EEPROM.write(3, 1);
-      EEPROM.commit();
-      Serial.println("Team Set to Nuetral!!!");
-      // debugmonitor.println("Team Set to Nuetral!!!");
-      ANYTEAM = true;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10201;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "202") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      Team = 0;
-      RGBRED = true;
-      EEPROM.write(3, 2);
-      EEPROM.commit();
-      Serial.println("Team Set to Red!!!");
-      //debugmonitor.println("Team Set to Red!!!");
-      ANYTEAM = false;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10202;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "203") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      Team = 1;
-      RGBBLUE = true;
-      EEPROM.write(3, 3);
-      EEPROM.commit();
-      Serial.println("Team Set to Blue!!!");
-      //debugmonitor.println("Team Set to Red!!!");
-      ANYTEAM = false;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10203;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "204") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      Team = 2;
-      RGBYELLOW = true;
-      EEPROM.write(3, 4);
-      EEPROM.commit();
-      Serial.println("Team Set to Yellow!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10204;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "205") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      Team = 3;
-      RGBGREEN = true;
-      EEPROM.write(3, 5);
-      EEPROM.commit();
-      Serial.println("Team Set to Green!!!");
-      //debugmonitor.println("Team Set to Green!!!");
-      ANYTEAM = false;
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10205;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "301") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      irledinterval = 1000;
-      EEPROM.write(4, 1);
-      EEPROM.commit();
-      Serial.println(irledinterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10301;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "302") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      irledinterval = 2000;
-      EEPROM.write(4, 2);
-      EEPROM.commit();
-      Serial.println(irledinterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10302;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "303") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      irledinterval = 3000;
-      EEPROM.write(4, 3);
-      EEPROM.commit();
-      Serial.println(irledinterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10303;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "304") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      irledinterval = 5000;
-      EEPROM.write(4, 4);
-      EEPROM.commit();
-      Serial.println(irledinterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10304;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "305") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      irledinterval = 10000;
-      EEPROM.write(4, 5);
-      EEPROM.commit();
-      Serial.println(irledinterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10305;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "306") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      irledinterval = 15000;
-      EEPROM.write(4, 6);
-      EEPROM.commit();
-      Serial.println(irledinterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10306;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "307") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      irledinterval = 30000;
-      EEPROM.write(4, 7);
-      EEPROM.commit();
-      Serial.println(irledinterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10307;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "308") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      irledinterval = 60000;
-      EEPROM.write(4, 8);
-      EEPROM.commit();
-      Serial.println(irledinterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10308;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "401") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = false;
-      EEPROM.write(5, 1);
-      EEPROM.commit();
-      Serial.println("Cool Down Deactivated"); 
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10401;
-        BROADCASTESPNOW = true;
-      } 
-    }
-    if (strcmp((char*)data, "402") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 5000;
-      EEPROM.write(5, 2);
-      EEPROM.commit();
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10402;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "403") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 10000;
-      EEPROM.write(5, 3);
-      EEPROM.commit();
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10403;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "404") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 15000;
-      EEPROM.write(5, 4);
-      EEPROM.commit();
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10404;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "405") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 30000;
-      EEPROM.write(5, 5);
-      EEPROM.commit();
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10405;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "406") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 60000;
-      EEPROM.write(5, 6);
-      EEPROM.commit();
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10406;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "407") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 120000;
-      EEPROM.write(5, 7);
-      EEPROM.commit();
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10407;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "408") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 180000;
-      EEPROM.write(5, 8);
-      EEPROM.commit();
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10408;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "409") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 300000;
-      EEPROM.write(5, 9);
-      EEPROM.commit();
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10409;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "410") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 600000;
-      EEPROM.write(5, 10);
-      EEPROM.commit();
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10410;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "411") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      EEPROM.write(5, 11);
-      EEPROM.commit();
-      CoolDownInterval = 900000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10411;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "412") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 1200000;
-      EEPROM.write(5, 12);
-      EEPROM.commit();
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10412;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "413") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 1800000;
-      EEPROM.write(5, 13);
-      EEPROM.commit();
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10413;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "501") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      RequiredCapturableEmitterCounter = 1;
-      EEPROM.write(6, 1);
-      EEPROM.commit();
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10501;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "502") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      RequiredCapturableEmitterCounter = 10;
-      EEPROM.write(6, 2);
-      EEPROM.commit();
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10502;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "503") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      RequiredCapturableEmitterCounter = 15;
-      EEPROM.write(6, 3);
-      EEPROM.commit();
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10503;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "504") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      RequiredCapturableEmitterCounter = 30;
-      EEPROM.write(6, 4);
-      EEPROM.commit();
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10504;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "505") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      RequiredCapturableEmitterCounter = 60;
-      EEPROM.write(6, 5);
-      EEPROM.commit();
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10505;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "506") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      RequiredCapturableEmitterCounter = 100;
-      EEPROM.write(6, 6);
-      EEPROM.commit();
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10506;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "507") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      RequiredCapturableEmitterCounter = 150;
-      EEPROM.write(6, 7);
-      EEPROM.commit();
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10507;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "508") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      RequiredCapturableEmitterCounter = 300;
-      EEPROM.write(6, 8);
-      EEPROM.commit();
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10508;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "509") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      RequiredCapturableEmitterCounter = 500;
-      EEPROM.write(6, 9);
-      EEPROM.commit();
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10509;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "510") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      RequiredCapturableEmitterCounter = 1000;
-      EEPROM.write(6, 10);
-      EEPROM.commit();
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10510;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "601") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      Serial.println("BRX Mode");
-      GearMod = 0;
-      EEPROM.write(7, 1);
-      EEPROM.commit();
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10601;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "602") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      Serial.println("LTTO Mode");
       GearMod = 1;
-      EEPROM.write(7, 2);
+      ResetScores();
+      EEPROM.write(2, GearMod);
       EEPROM.commit();
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10602;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "603") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      Serial.println("BRP Mode");
-      GearMod = 2;
-      EEPROM.write(7, 3);
-      EEPROM.commit();
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10603;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "700") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      //ResetAllIRProtocols();
-      EEPROM.write(8, 0);
-      EEPROM.commit();
-      LTTOOTZ = false;
-      LTTORESPAWN = false;
-      LTTOHOSTED = false;
-      LTTOGG = false;
-      Serial.println("Hosted Tag!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10700;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "701") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      //ResetAllIRProtocols();
-      EEPROM.write(8, 1);
-      EEPROM.commit();
-      LTTOOTZ = false;
-      LTTORESPAWN = false;
-      LTTOHOSTED = true;
-      LTTOGG = false;
-      Serial.println("Hosted Tag!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10701;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "702") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      //ResetAllIRProtocols();
-      EEPROM.write(8, 2);
-      EEPROM.commit();
-      LTTOOTZ = false;
-      LTTORESPAWN = false;
-      LTTOHOSTED = false;
-      LTTOGG = true;
-      Serial.println("G&G Tag!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10702;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "703") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      //ResetAllIRProtocols();
-      EEPROM.write(8, 3);
-      EEPROM.commit();
-      LTTOOTZ = false;
-      LTTORESPAWN = true;
-      LTTOHOSTED = false;
-      LTTOGG = false;
-      Serial.println("LTTO Respawns Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10703;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "704") == 0) {
-      if (DeviceSelector == JBOXID || DeviceSelector == 199) {
-      //ResetAllIRProtocols();
-      EEPROM.write(8, 4);
-      EEPROM.commit();
-      LTTOOTZ = true;
-      LTTORESPAWN = false;
-      LTTOHOSTED = false;
-      LTTOGG = false;
-      Serial.println("LTTO Own The Zone!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-      }if (DeviceSelector != JBOXID) {
-        datapacket2 = 10704;
-        BROADCASTESPNOW = true;
-      }
-    }
-    if (strcmp((char*)data, "800") == 0) {
-      DeviceSelector = 100;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
-    }
-    if (strcmp((char*)data, "801") == 0) {
-      DeviceSelector = 101;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
-    }
-    if (strcmp((char*)data, "802") == 0) {
-      DeviceSelector = 102;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
-    }
-    if (strcmp((char*)data, "803") == 0) {
-      DeviceSelector = 103;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
-    }
-    if (strcmp((char*)data, "804") == 0) {
-      DeviceSelector = 104;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
-    }
-    if (strcmp((char*)data, "805") == 0) {
-      DeviceSelector = 105;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
-    }
-    if (strcmp((char*)data, "806") == 0) {
-      DeviceSelector = 106;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
-    }
-    if (strcmp((char*)data, "807") == 0) {
-      DeviceSelector = 107;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
-    }
-    if (strcmp((char*)data, "808") == 0) {
-      DeviceSelector = 108;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
-    }
-    if (strcmp((char*)data, "809") == 0) {
-      DeviceSelector = 109;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
-    }
-    if (strcmp((char*)data, "898") == 0) {
-      DeviceSelector = 199;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
-    }
-    if (strcmp((char*)data, "899") == 0) {
-      DeviceSelector = JBOXID;
-      Serial.println("Device Selector Change!!!");
-      datapacket1 = DeviceSelector;
+      Serial.println("Set Gear Selection to Evolver");
     }
     if (strcmp((char*)data, "900") == 0) {
       JBOXID = 100;
@@ -2674,761 +1208,50 @@ String processor(const String& var){
   }
 }
 void ProcessIncomingCommands() { 
-  //Serial.print("cOMMS loop running on core ");
-  //Serial.println(xPortGetCoreID());
-  int IncomingTeam = 99;
-  if (incomingData1 > 199) {
-    IncomingTeam = incomingData1 - 200;
-  }
-  if (incomingData1 == JBOXID || incomingData1 == 199) { // data checked out to be intended for this player ID or for all players
-    digitalWrite(2, HIGH);
-    if (incomingData2  ==  10001) {
-      // default domination mode that provides both player scoring and team scoring
-      // Scoring reports over BLE to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("Basic Domination Mode - Default!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
-      Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = true; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = true; // enables control point captured call out
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-    }
-    if (incomingData2  ==  10002) {
-      // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
-      // Then activates a default interval spaced broadcast of a tag of choice.
-      // The tag of choice will need to be selected otherwise motion sensor is broadcasted.
-      // This is good for use as a respawn station that requires no button or trigger
-      // mechanism to activate. The default delay is two seconds but can be modified
-      // by another setting option in the application. Another use is a proximity detector or mine.
-      Serial.println("Continuous IR Emitter!!!");
-      //debugmonitor.println("Continuous IR Emitter!!!");
-      Function = 2;
-      Team = 2;
-      RGBGREEN = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      BASECONTINUOUSIRPULSE = true;
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = false; // enables this game mode
-      ResetAllIRProtocols(); // Resets all ir protocols
-      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
-      ENABLEIRRECEIVER = false; // deactivates the ir receiver to avoid unnecessary processes
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-    }
-    if (incomingData2  ==  10003) {
-      // Clears out any existing IR and Base Game Settings
-      // Sets Default for tag activation to send an IR emitter protocol for "motion sensor" as default
-      // 
-      Serial.println("Tage Activated IR Emitter!!!");
-      //debugmonitor.println("Tage Activated IR Emitter!!!");
-      Function = 3;
-      Team = 2;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      BASECONTINUOUSIRPULSE = false;
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = false; // enables this game mode
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
-      ResetAllIRProtocols(); // resets all ir protocols
-      MOTIONSENSOR = true; // enables the alarm sound tag protocol 
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-    }
-    if (incomingData2  ==  10004) {
-      // Clears out existing settings
-      // Sets default Continuous Emitter Tag to Respwan Station As Default
-      // Creates A Counter for Capturability by Shots (default is 10, change default to desired count) 
-      // Enable IR Activated Capturability to switch team friendly setting to last captured    
-      // bases start out as default red team
-      // recommend doing a delay for respawn time to limit players ability to respawn right away on a base they may be guarding
-      Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
-      //debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
-      Function = 4;
-      Team = 2; // sets all bases to default to red team
-      RGBWHITE = true;
-      BASECONTINUOUSIRPULSE = true;
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = false; // enables this game mode
-      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
-      ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
-      ResetAllIRProtocols(); // reset all ir protocols
-      RESPAWNSTATION = true; // enables the alarm sound tag protocol
-      CAPTURABLEEMITTER = true; // enables the team freindly to be toggled via IR  
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-    }
-    if (incomingData2  ==  10005) {
-      // 5 Minute domination mode that provides both player scoring and team scoring
-      // Scoring reports over webserver to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("5 Min Domination Mode - Default!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
-      Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = true; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = true; // enables control point captured call out
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = true;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false; 
-      CAPTURETHEFLAGMODE = false; 
-      MULTIBASEDOMINATION = false;
-    }
-    if (incomingData2  ==  10006) {
-      // 10 Minute domination mode that provides both player scoring and team scoring
-      // Scoring reports over webserver to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("10 min Domination Mode - Default!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
-      Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = true; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = true; // enables control point captured call out
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = true;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-    }
-    if (incomingData2  ==  10007) {
-      // 5 Minute tug o war domination mode that provides both player scoring and team scoring
-      // Scoring reports over webserver to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("5 min Tug of War Domination Mode - Default!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
-      Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = true; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = true; // enables control point captured call out
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = true;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = true;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-    }
-    if (incomingData2  ==  10008) {
-      // 5 Minute tug o war domination mode that provides both player scoring and team scoring
-      // Scoring reports over webserver to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("Capture the flag mode!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
-      Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = false; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = false; // enables control point captured call out
-      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = true;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = true;
-      MULTIBASEDOMINATION = false;
-    }
-    if (incomingData2  ==  10009) {
-      // 10 Minute domination mode that provides both player scoring and team scoring
-      // Scoring reports over webserver to paired mobile device and refreshes every time
-      // the score changes. To deactivate, select this option a second time to pause
-      // the game/score. Recommended as a standalone base use only. Each time base is
-      // shot, the team or player who shot takes posession and the base emitts a tag
-      // that notifies player that the base (control point) was captured.
-      Serial.println("10 min Domination Mode - Multi Bases!!!");
-      //debugmonitor.println("Basic Domination Mode - Default!!!");
-      Function = 1;
-      RGBWHITE = true;
-      CAPTURABLEEMITTER = false; // enables the team freindly to be toggled via IR
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = true; // enables this game mode
-      ResetAllIRProtocols(); // resets all ir protocols
-      CONTROLPOINTCAPTURED = true; // enables control point captured call out
-      TAGACTIVATEDIR = true; // enables ir pulsing when base is shot
-      BASECONTINUOUSIRPULSE = false;
-      ENABLEIRRECEIVER = true;
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = true;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = true;
-    }
-    if (incomingData2  ==  10010) {
-      // Own The Zone Mode sends the IR and zone espnow beacon to add objective points to player/teams
-      // Continuous IR Emitter Mode, Clears out any existing IR Tag Settings
-      // Clears out existing settings
-      // Sets default Continuous Emitter Tag to Respwan Station As Default
-      // Creates A Counter for Capturability by Shots (default is 10, change default to desired count) 
-      // Enable IR Activated Capturability to switch team friendly setting to last captured    
-      // bases start out as default red team
-      // recommend doing a delay for respawn time to limit players ability to respawn right away on a base they may be guarding
-      Serial.println("Dual Mode - Capturable Continuous IR Emitter!!!");
-      //debugmonitor.println("Dual Mode - Capturable Continuous IR Emitter!!!");
-      Function = 4;
-      Team = 2; // sets all bases to default to red team
-      RGBWHITE = true;
-      BASECONTINUOUSIRPULSE = false;
-      DOMINATIONCLOCK = false; // stops the game from going if already running
-      BASICDOMINATION = false; // enables this game mode
-      TAGACTIVATEDIR = false; // enables ir pulsing when base is shot
-      ENABLEIRRECEIVER = true; // activates the ir receiver to receive tags
-      ResetAllIRProtocols(); // reset all ir protocols
-      OWNTHEZONE = true; // enables the ZONE TAG IR protocol
-      CAPTURABLEEMITTER = true; // enables the team freindly to be toggled via IR  
-      FIVEMINUTEDOMINATION = false;
-      TENMINUTEDOMINATION = false;
-      FIVEMINUTETUGOWAR = false;
-      CAPTURETHEFLAGMODE = false;
-      MULTIBASEDOMINATION = false;
-      irledinterval = 15000;
-    }
-    if (incomingData2  ==  10101) {
-      ResetAllIRProtocols();
-      MOTIONSENSOR = true;
-      Serial.println("Motion Sensor Enabled!!!");
-      //debugmonitor.println("Motion Sensor Enabled!!!");
-    }
-    if (incomingData2  ==  10102) {
-      ResetAllIRProtocols();
-      CAPTURETHEFLAG = true;
-      Serial.println("Capture the Flag Enabled!!!");
-      //debugmonitor.println("Capture the Flag Enabled!!!");
-    }
-    if (incomingData2  ==  10103) {
-      ResetAllIRProtocols();
-      CONTROLPOINTLOST = true;
-      Serial.println("Control Point Lost Enabled!!!");
-      //debugmonitor.println("Control Point Lost Enabled!!!");
-    }
-    if (incomingData2  ==  10104) {
-      ResetAllIRProtocols();
-      GASGRENADE = true;
-      Serial.println("Gas Grenade Enabled!!!");
-      //debugmonitor.println("Gas Grenade Enabled!!!");
-    }
-    if (incomingData2  ==  10105) {
-      ResetAllIRProtocols();
-      LIGHTDAMAGE = true;
-      Serial.println("Light Damage Enabled!!!");
-      //debugmonitor.println("Light Damage Enabled!!!");
-    }
-    if (incomingData2  ==  10106) {
-      ResetAllIRProtocols();
-      MEDIUMDAMAGE = true;
-      Serial.println("Medium Damage Enabled!!!");
-      //debugmonitor.println("Medium Damage Enabled!!!");
-    }
-    if (incomingData2  ==  10107) {
-      ResetAllIRProtocols();
-      HEAVYDAMAGE = true;
-      Serial.println("Heavy Damage Enabled!!!");
-      //debugmonitor.println("Heavy Damage Enabled!!!");
-    }
-    if (incomingData2  ==  10108) {
-      ResetAllIRProtocols();
-      FRAG = true;
-      Serial.println("Explosive Damage Enabled!!!");
-      //debugmonitor.println("Explosive Damage Enabled!!!");
-    }
-    if (incomingData2  ==  10109) {
-      ResetAllIRProtocols();
-      RESPAWNSTATION = true;
-      Serial.println("Respawn Station Enabled!!!");
-      //debugmonitor.println("Respawn Station Enabled!!!");
-    }
-    if (incomingData2  ==  10110) {
-      ResetAllIRProtocols();
-      MEDKIT = true;
-      Serial.println("Medkit Enabled!!!");
-      //debugmonitor.println("Medkit Enabled!!!");
-    }
-    if (incomingData2  ==  10112) {
-      ResetAllIRProtocols();
-      ARMORBOOST = true;
-      Serial.println("Armor Boost Enabled!!!");
-      //debugmonitor.println("Armor Boost Enabled!!!");
-    }
-    if (incomingData2  ==  10113) {
-      ResetAllIRProtocols();
-      SHEILDS = true;
-      Serial.println("Sheilds Enabled!!!");
-      //debugmonitor.println("Sheilds Enabled!!!");
-    }
-    if (incomingData2  ==  10111) {
-      ResetAllIRProtocols();
-      LOOTBOX = true;
-      Serial.println("Loot Box Enabled!!!");
-      //debugmonitor.println("Loot Box Enabled!!!");
-    }
-    if (incomingData2  ==  10114) {
-      ResetAllIRProtocols();
-      OWNTHEZONE = true;
-      Serial.println("Own The Zone Enabled!!!");
-      //debugmonitor.println("Own The Zone Enabled!!!");
-    }
-    if (incomingData2  ==  10115) {
-      ResetAllIRProtocols();
-      CONTROLPOINTCAPTURED = true;
-      Serial.println("Control Point Captured Enabled!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (incomingData2  ==  10116) {
-      ResetAllIRProtocols();
-      CUSTOMLTTOTAG = true;
-      Serial.println("LTTO Customizer Enabled!!!");
-    }
-    if (incomingData2  ==  10117) {
-      ResetAllIRProtocols();
-      WRESPAWNSTATION = true;
-      Serial.println("ESPNOW Respawn Station Enabled!!!");
-    }
-    if (incomingData2  ==  10151) {
-      //ResetAllIRProtocols();
-      LTTODamage = 1;
-      Serial.println("Tags set to 1!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (incomingData2  ==  10152) {
-      //ResetAllIRProtocols();
-      LTTODamage = 1;
-      Serial.println("Tags set to 2!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (incomingData2  ==  10153) {
-      //ResetAllIRProtocols();
-      LTTODamage = 1;
-      Serial.println("Tags set to 3!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (incomingData2  ==  10154) {
-      //ResetAllIRProtocols();
-      LTTODamage = 1;
-      Serial.println("Tags set to 4!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (incomingData2  ==  10201) {
-      Team = 2;
-      RGBWHITE = true;
-      Serial.println("Team Set to Nuetral!!!");
-      // debugmonitor.println("Team Set to Nuetral!!!");
-      ANYTEAM = true;
-    }
-    if (incomingData2  ==  10202) {
-      Team = 0;
-      RGBRED = true;
-      Serial.println("Team Set to Red!!!");
-      //debugmonitor.println("Team Set to Red!!!");
-      ANYTEAM = false;
-    }
-    if (incomingData2  ==  10203) {
-      Team = 1;
-      RGBBLUE = true;
-      Serial.println("Team Set to Blue!!!");
-      //debugmonitor.println("Team Set to Red!!!");
-      ANYTEAM = false;
-    }
-    if (incomingData2  ==  10204) {
-      Team = 2;
-      RGBYELLOW = true;
-      Serial.println("Team Set to Yellow!!!");
-      //debugmonitor.println("Team Set to Yellow!!!");
-    }
-    if (incomingData2  ==  10205) {
-      Team = 3;
-      RGBGREEN = true;
-      Serial.println("Team Set to Green!!!");
-      //debugmonitor.println("Team Set to Green!!!");
-      ANYTEAM = false;
-    }
-    if (incomingData2  ==  10301) {
-      irledinterval = 1000;
-      Serial.println(irledinterval);
-    }
-    if (incomingData2  ==  10302) {
-      irledinterval = 2000;
-      Serial.println(irledinterval);
-    }
-    if (incomingData2  ==  10303) {
-      irledinterval = 3000;
-      Serial.println(irledinterval);
-    }
-    if (incomingData2  ==  10304) {
-      irledinterval = 5000;
-      Serial.println(irledinterval);
-    }
-    if (incomingData2  ==  10305) {
-      irledinterval = 10000;
-      Serial.println(irledinterval);
-    }
-    if (incomingData2  ==  10306) {
-      irledinterval = 15000;
-      Serial.println(irledinterval);
-    }
-    if (incomingData2  ==  10307) {
-      irledinterval = 30000;
-      Serial.println(irledinterval);
-    }
-    if (incomingData2  ==  10308) {
-      irledinterval = 60000;
-      Serial.println(irledinterval);
-    }
-    if (incomingData2  ==  10401) {
-      TAGACTIVATEDIRCOOLDOWN = false;
-    Serial.println("Cool Down Deactivated");  
-    }
-    if (incomingData2  ==  10402) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 5000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10403) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 10000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10404) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 15000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10405) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 30000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10406) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 60000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10407) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 120000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10408) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 180000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10409) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 300000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10410) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 600000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10411) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 900000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10412) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 1200000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10413) {
-      TAGACTIVATEDIRCOOLDOWN = true;
-      CoolDownInterval = 1800000;
-      Serial.println("Cool Down Activated"); 
-      Serial.print("Cool Down Timer Set to: ");
-      Serial.println(CoolDownInterval);
-    }
-    if (incomingData2  ==  10501) {
-      RequiredCapturableEmitterCounter = 1;
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-    }
-    if (incomingData2  ==  10502) {
-      RequiredCapturableEmitterCounter = 10;
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-    }
-    if (incomingData2  ==  10503) {
-      RequiredCapturableEmitterCounter = 15;
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-    }
-    if (incomingData2  ==  10504) {
-      RequiredCapturableEmitterCounter = 30;
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-    }
-    if (incomingData2  ==  10505) {
-      RequiredCapturableEmitterCounter = 60;
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-    }
-    if (incomingData2  ==  10506) {
-      RequiredCapturableEmitterCounter = 100;
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-    }
-    if (incomingData2  ==  10507) {
-      RequiredCapturableEmitterCounter = 150;
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-    }
-    if (incomingData2  ==  10508) {
-      RequiredCapturableEmitterCounter = 300;
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-    }
-    if (incomingData2  ==  10509) {
-      RequiredCapturableEmitterCounter = 500;
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-    }
-    if (incomingData2  ==  10510) {
-      RequiredCapturableEmitterCounter = 1000;
-      Serial.print("Required Capturable Emitter Counter Set to: ");
-      Serial.println(RequiredCapturableEmitterCounter);
-    }
-    if (incomingData2  ==  10601) {
-      Serial.println("BRX Mode");
-      GearMod = 0;
-    }
-    if (incomingData2  ==  10602) {
-      Serial.println("LTTO Mode");
-      GearMod = 1;
-    }
-    if (incomingData2  ==  10603) {
-      Serial.println("Recoil Mode");
-    }
-    if (incomingData2  ==  10700) {
-      //ResetAllIRProtocols();
-      LTTOOTZ = false;
-      LTTORESPAWN = false;
-      LTTOHOSTED = false;
-      LTTOGG = false;
-      Serial.println("Hosted Tag!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (incomingData2  ==  10701) {
-      //ResetAllIRProtocols();
-      LTTOOTZ = false;
-      LTTORESPAWN = false;
-      LTTOHOSTED = true;
-      LTTOGG = false;
-      Serial.println("Hosted Tag!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (incomingData2  ==  10702) {
-      //ResetAllIRProtocols();
-      LTTOOTZ = false;
-      LTTORESPAWN = false;
-      LTTOHOSTED = false;
-      LTTOGG = true;
-      Serial.println("G&G Tag!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (incomingData2  ==  10703) {
-      //ResetAllIRProtocols();
-      LTTOOTZ = false;
-      LTTORESPAWN = true;
-      LTTOHOSTED = false;
-      LTTOGG = false;
-      Serial.println("LTTO Respawns Enabled!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (incomingData2  ==  10704) {
-      //ResetAllIRProtocols();
-      LTTOOTZ = true;
-      LTTORESPAWN = false;
-      LTTOHOSTED = false;
-      LTTOGG = false;
-      Serial.println("LTTO Own The Zone!!!");
-      //debugmonitor.println("Control Point Captured Enabled!!!");
-    }
-    if (incomingData2  ==  10801) {
-      // game reset
+  // need a command that resets scores ****
+  if (incomingData1 == JBOXID || incomingData1 == 199) { // data checked out to be intended for this JBOX or for all JBOXes
+    if (incomingData2 > 9999 && incomingData2 < 10400) {
+      // received a posession update from another JBOX
+      int incomingplayerid = 0;
+      int incomingteamid = 0;
+      int tempvalue = incomingData2 - 10000;
+      if (tempvalue > 299) {
+        incomingteamid = 3;
+        incomingplayerid = tempvalue - 300;
+      } else {
+        if (tempvalue > 199) {
+          incomingteamid = 2;
+        incomingplayerid = tempvalue - 200;
+        } else {
+          if (tempvalue > 99) {
+            incomingteamid = 1;
+            incomingplayerid = tempvalue - 100;
+          } else {
+            incomingteamid = 0;
+            incomingplayerid = tempvalue;
+          }
+        }
+      }
+      if (Function == 3) {
+        PlayerScore[incomingplayerid]++;
+        TeamScore[incomingteamid]++;
+        Serial.println("applied points from another base");
+      }
+      if (Function < 3) {
+        int incomingjboxid = incomingData3 - 100;
+        JboxPlayerID[incomingjboxid] = incomingplayerid;
+        JboxTeamID[incomingjboxid] = incomingteamid;
+        JboxInPlay[incomingjboxid] = 1;
+        MULTIBASEDOMINATION = true;
+      }
+    }
+    if (incomingData2 == 10401) {
       ResetScores();
-      Serial.println("Resetting Scores");
-    }
-    if (incomingData2  ==  10802) {
-      // Game End
-      DOMINATIONCLOCK = false;
-      UpdateWebApp0();
-      UpdateWebApp2();
-      Serial.println("Game Over");
-    }
-    if (incomingData2 < 1000 && incomingData2 > 900) { // Syncing scores
-      //int b = incomingData2 - 900;
-      //if (b == 2) { // this is an incoming score from a player!
-        //AccumulateIncomingScores();
-      //}
     }
   }
   digitalWrite(2, LOW);
 }
 
-
-//*************************************************************************
-//*************************** LORA OBJECTS ********************************
-//*************************************************************************
-void ReceiveTransmission() {
-  // this is an object used to listen to the serial inputs from the LoRa Module
-  if(Serial1.available()>0){ // checking to see if there is anything incoming from the LoRa module
-    Serial.println("Got Data"); // prints a notification that data was received
-    LoRaDataReceived = Serial1.readString(); // stores the incoming data to the pre set string
-    Serial.print("LoRaDataReceived: "); // printing data received
-    Serial.println(LoRaDataReceived); // printing data received
-    if(LoRaDataReceived.startsWith("+RCV")){ // checking if the data was from another LoRa module
-      // convert the received data into a string array for comparing data
-      char *ptr = strtok((char*)LoRaDataReceived.c_str(), ",");
-      int index = 0;
-      while (ptr != NULL){
-        tokenStrings[index] = ptr;
-        index++;
-        ptr = strtok(NULL, ",");  // takes a list of delimiters
-        }
-        // the data is now stored into individual strings under tokenStrings[]
-        // print out the individual string arrays separately
-        Serial.println("received LoRa communication");
-        Serial.print("Token 0: ");
-        Serial.println(tokenStrings[0]);
-        Serial.print("Token 1: ");
-        Serial.println(tokenStrings[1]);
-        Serial.print("Token 2: ");
-        Serial.println(tokenStrings[2]);
-        Serial.print("Token 3: ");
-        Serial.println(tokenStrings[3]);
-        Serial.print("Token 4: ");
-        Serial.println(tokenStrings[4]);
-        int LoRaDataVerification = tokenStrings[2].toInt();
-        // check the data for a data match
-        if(LoRaDataVerification < 1000) {
-          // Confirmed the data is coming from a Respawn Station, remaining is the player ID
-          if (LoRaDataVerification < 100) {
-            // Confirmed this is team red were receiving data about
-            int IncomingPlayerID = LoRaDataVerification;
-            int IncomingTeamID = 0;
-          } else {
-            if (LoRaDataVerification < 200) {
-              // Confirmed this is team blue were receiving data about
-              int IncomingPlayerID = LoRaDataVerification - 100;
-              int IncomingTeamID = 1;
-            } else {
-              if (LoRaDataVerification < 300) {
-                // Confirmed this is team yellow were receiving data about
-                int IncomingPlayerID = LoRaDataVerification - 200;
-                int IncomingTeamID = 2;
-              } else {
-                  // Confirmed this is team green were receiving data about
-                  int IncomingPlayerID = LoRaDataVerification - 300;
-                  int IncomingTeamID = 3;
-                }
-            }
-          }
-        }
-        digitalWrite(LED_BUILTIN, HIGH); // iluminte the onboard led
-        receivercounter();
-        //TRANSMIT = true; // setting the transmission trigger to enable transmission
-      }
-    }
-}
-void transmissioncounter() {
-  sendcounter++;
-  Serial.println("Added 1 to sendcounter and sent to blynk app");
-  Serial.println("counter value = "+String(sendcounter));
-}
-void receivercounter() {
-  receivecounter++;
-  Serial.println("Added 1 to receivercounter and sent to blynk app");
-  Serial.println("counter value = "+String(receivecounter));
-  digitalWrite(LED_BUILTIN, LOW); // turn onboard led off
-}
-void TransmitLoRa() {
-  // LETS SEND SOMETHING:
-  // delay(5000);
-  // String LoRaDataToSend = (String(valueA)+String(valueB)+String(valueC)+String(valueD)+String(valueE)); 
-  // If needed to send a response to the sender, this function builds the needed string
-  Serial.println("Transmitting Via LoRa"); // printing to serial monitor
-  Serial1.print("AT+SEND=0,5,"+LoRaDataToSend+"\r\n"); // used to send a confirmation to sender
-  //  Serial1.print("AT+SEND=0,1,5\r\n"); // used to send data to the specified recipeint
-  //  Serial1.print("$PLAY,VA20,4,6,,,,,*");
-  //  Serial.println("Sent the '5' to device 0");
-  transmissioncounter();
-}
 
 //*************************************************************************
 //*************************** RGB OBJECTS *********************************
@@ -3445,6 +1268,7 @@ void resetRGB() {
   RGBWHITE = false;
 }
 void AlignRGBWithTeam() {
+  Serial.println("running AlignRGBWithTeam Function");
   resetRGB();
   if (TeamID == 0) {
     RGBRED = true;
@@ -3538,31 +1362,31 @@ void rgbblink() {
     RGBState = HIGH;
     if(RGBGREEN) {
       rgbgreen();
-      Serial.println("Blinking RGB");
+      //////Serial.println("Blinking RGB");
       }
     if(RGBRED) {
       rgbred();
-      Serial.println("Blinking RGB");
+      ////Serial.println("Blinking RGB");
       }
     if(RGBYELLOW) {
       rgbyellow();
-      Serial.println("Blinking RGB");
+      ////Serial.println("Blinking RGB");
       }
     if(RGBBLUE) {
       rgbblue();
-      Serial.println("Blinking RGB");
+      ////Serial.println("Blinking RGB");
       }
     if(RGBPURPLE) {
       rgbpurple();
-      Serial.println("Blinking RGB");
+      ////Serial.println("Blinking RGB");
       }
     if(RGBCYAN) {
       rgbcyan();
-      Serial.println("Blinking RGB");
+      ////Serial.println("Blinking RGB");
       }
     if(RGBWHITE) {
       rgbwhite();
-      //Serial.println("Blinking RGB");
+      //////Serial.println("Blinking RGB");
       }
   } else {
     rgboff();
@@ -3680,64 +1504,73 @@ void IDShot() {
       Serial.println(ShotType);      
 }
 // this procedure breaksdown each player bit of the brx ir signal recieved and assigns the applicable bit value then adds them together to identify the player ID (1-64)
+void IDEvolverPlayer() {
+      // determining indivudual protocol values for player ID bits
+      // Also assign IR values for sending player ID with device originated tags
+      int brpid = 0;
+      if (PP[3] > 750) {
+        PID[0] = 1;
+      } else {
+        PID[0] = 0;
+      }
+      if (PP[2] > 750) {
+        PID[1]=2;
+      } else {
+        PID[1]=0;
+      }
+      if (PP[1] > 750) {
+        PID[2]=4;
+        } else {
+        PID[2]=0;
+      }
+      if (PP[0] > 750) {
+        PID[3]=8;
+      } else {
+        PID[3]=0;
+      }
+      // ID Player by summing assigned values above based upon protocol values (1-64)
+      PlayerID=PID[0]+PID[1]+PID[2]+PID[3];
+      Serial.print("Player ID = ");
+      Serial.println(PlayerID);      
+}
 void IDplayer() {
       // determining indivudual protocol values for player ID bits
       // Also assign IR values for sending player ID with device originated tags
       int brpid = 0;
-      if (TT[0] > 750) {
-        brpid = brpid + 1;
-      }
       if (PP[5] > 750) {
         PID[0] = 1;
-        brpid = brpid + 2;
       } else {
         PID[0] = 0;
       }
       if (PP[4] > 750) {
         PID[1]=2;
-        brpid = brpid + 4;
       } else {
         PID[1]=0;
       }
       if (PP[3] > 750) {
         PID[2]=4;
-        brpid = brpid + 8;
         } else {
         PID[2]=0;
       }
       if (PP[2] > 750) {
         PID[3]=8;
-        brpid = brpid + 16;
       } else {
         PID[3]=0;
       }
       if (PP[1] > 750) {
         PID[4]=16;
-        brpid = brpid + 32;
       } else {
         PID[4]=0;
       }
       if (PP[0] > 750) {
         PID[5]=32;
-        brpid = brpid + 64;
       } else {
         PID[5]=0;
       }
       // ID Player by summing assigned values above based upon protocol values (1-64)
       PlayerID=PID[0]+PID[1]+PID[2]+PID[3]+PID[4]+PID[5];
-      if (GearMod = 2) {
-        PlayerID = brpid;
-      }
       Serial.print("Player ID = ");
       Serial.println(PlayerID);      
-}
-void BasicDomination() {
-  RGBDEMOMODE = false;
-  AlignRGBWithTeam();
-  BUZZ = true;
-  if (!DOMINATIONCLOCK) {
-    DOMINATIONCLOCK = true;
-  }
 }
 void teamID() {
       // check if the IR is from Red team
@@ -3767,20 +1600,6 @@ void teamID() {
       Serial.print("team = Yellow = ");
       Serial.println(TeamID);
       }
-      if (GearMod == 2) {
-        TeamID = 0;
-        if (DD[1] > 750) {
-          TeamID = TeamID + 1;
-        }
-        if (DD[0] > 750) {
-          TeamID = TeamID + 2;
-        }
-        if (TT[1] > 750) {
-          TeamID = TeamID + 4;
-        }
-        Serial.print("team = Blue = ");
-        Serial.println(TeamID);
-      }
 }
 void IDPower() {
   if (UU[0] < 750 & UU[1] < 750) {PowerID = 0;}
@@ -3793,6 +1612,15 @@ void IDCritical() {
   if (CC[0] < 750) {CriticalID = 0;}
   else {CriticalID = 1;}
   Serial.println("Criical = "+String(CriticalID));
+}
+void BasicDomination() {
+  RGBDEMOMODE = false;
+  AlignRGBWithTeam();
+  if (!DOMINATIONCLOCK) {
+    DOMINATIONCLOCK = true;
+  }
+  Serial.println("enabled domination clock/counter");
+  SharePointsWithOthers();
 }
 void ChangeBaseAlignment() {
   if (TeamID != Team) { // checks to see if tag hitting base is unfriendly or friendly
@@ -3870,51 +1698,7 @@ void receiveBRXir() {
         IDDamage();
         IDPower();
         IDCritical();
-        if (CAPTURABLEEMITTER) {
-          ChangeBaseAlignment();
-        }
-        if (CAPTURETHEFLAGMODE) {
-          if (TeamID != Team) {
-            // this is not a friendly tag, flag has been captured
-            //sends the flag to player who shot base
-            Serial.println("Flag captured");
-              datapacket2 = 31599;
-              datapacket1 = PlayerID;
-              BROADCASTESPNOW = true;
-          }
-          else {
-            if (ShotType == 4) {
-              // this is a flag being hung!
-              CAPTURETHEFLAGMODE = false;
-              // ends the game for everyone
-              datapacket2 = 1410 + TeamID;
-              datapacket1 = 99;
-              BROADCASTESPNOW = true;
-              Serial.println("A team has reached the goal, ending game");
-            }
-          }
-        }
-        if (BASICDOMINATION) {
-          BasicDomination();
-        }
-        if (TAGACTIVATEDIRCOOLDOWN) {
-          if (!TAGACTIVATEDIR) {
-            // this means that the base is on cool down, should send alarm or damage or something
-          }
-        }
-        if (TAGACTIVATEDIR) {
-          if (TAGACTIVATEDIRCOOLDOWN) {
-            TAGACTIVATEDIR = false;
-            if (ANYTEAM) {
-              Team = TeamID;
-            }
-            CoolDownStart = millis();
-            resetRGB();
-            RGBRED = true;
-          }
-          VerifyCurrentIRTagSelection();
-          BUZZ = true;
-        }
+        NEWTAGRECEIVED = true;
       } else {
         Serial.println("Protocol not Recognized");
       }
@@ -3922,172 +1706,60 @@ void receiveBRXir() {
       //Serial.println("Incorrect Sync Bits from Protocol, not BRX");
     }
 }
-
-//******************************************************************************************************************************************************************************************
-void PrintLTTOTag() {
-  // prints each individual bit on serial monitor
-  Serial.println("TagReceived!!");
-  Serial.println(PLTTO[0]);
-  Serial.println(PLTTO[1]);
-  Serial.println(TLTTO[0]);
-  Serial.println(TLTTO[1]);
-  Serial.println(TLTTO[2]);
-  Serial.println(DLTTO[0]);
-  Serial.println(DLTTO[1]);
-}
-//******************************************************************************************************************************************************************************************
-void IDLTTOTeam() {
-  int PID[2];
-  int TID[3];
-  if (PLTTO[1] > 1750) {
-    PID[1] = 1;
-  } else {
-    PID[1] = 0;
-  }
-  if (PLTTO[0] > 1750) {
-    PID[0] = 2;
-  } else {
-    PID[0] = 0;
-  }
-  if (TLTTO[2] > 1750) {
-    TID[2] = 1;
-  } else {
-    TID[2] = 0;
-  }
-  if (TLTTO[1] > 1750) {
-    TID[1] = 2;
-  } else {
-    TID[1] = 0;
-  }
-  if (TLTTO[0] > 1750) {
-    TID[0] = 4;
-  } else {
-    TID[0] = 0;
-  }
-  if (LTTOTagType == 1) {
-    Serial.println("Grab and Go Game");
-    Serial.print("Team identified as: ");
-    TeamID = TID[2] + TID[1] + TID[0];
-    if (TeamID == 0) {
-      Serial.println("Solo");
-    }
-    if (TeamID == 1) {
-      Serial.println("Team 1");
-    }
-    if (TeamID == 2) {
-      Serial.println("Team 2");
-    }
-    if (TeamID == 3) {
-      Serial.println("Team 3");
-    }
-  } else {
-    Serial.println("Hosted Game");
-    PlayerID = TID[2] + TID[1] + TID[0] + 1;
-    TeamID = PID[0] + PID[1];
-    Serial.print("Team identified as: ");
-    if (TeamID == 0) {
-      Serial.println("Solo");
-    }
-    if (TeamID == 1) {
-      Serial.println("Team 1");
-    }
-    if (TeamID == 2) {
-      Serial.println("Team 2");
-    }
-    if (TeamID == 3) {
-      Serial.println("Team 3");
-    }
-    Serial.print("Player identified as: ");
-    Serial.println(PlayerID);
-  }
-}
-
-void IDLTTODamage() {
-  int DID[3];
-  if (DLTTO[1] > 1750) {
-    DID[1] = 1;
-  } else {
-    DID[1] = 0;
-  }
-  if (DLTTO[0] > 1750) {
-    DID[0] = 2;
-  } else {
-    DID[0] = 0;
-  }
-  Serial.print("Tag damage = ");
-  DamageID = DID[1] + DID[0] + 1;
-  Serial.println(DamageID);
-}
-//******************************************************************************************************************************************************************************************
 // This procedure uses the preset IR_Sensor_Pin to determine if an ir received is BRX, if so it records the protocol received
-void ReceiveLTTO() {
+void ReceiveEvolverIR() {
   // makes the action below happen as it cycles through the 25 bits as was delcared above
-  for (byte x = 0; x < 2; x++) PLTTO[x]=0;
-  for (byte x = 0; x < 3; x++) TLTTO[x]=0;
-  for (byte x = 0; x < 2; x++) DLTTO[x]=0;
-  // checks for a 3 millisecond sync pulse signal with a tollerance of 500 microsecons
-  if (pulseIn(IR_Sensor_Pin, LOW, 250000) > 2500) {
-    if (pulseIn(IR_Sensor_Pin, LOW) < 3200) {
+  for (byte x = 0; x < 4; x++) BB[x]=0;
+  for (byte x = 0; x < 4; x++) PP[x]=0;
+  for (byte x = 0; x < 2; x++) TT[x]=0;
+  for (byte x = 0; x < 8; x++) DD[x]=0;
+  for (byte x = 0; x < 1; x++) CC[x]=0;
+  //for (byte x = 0; x < 2; x++) UU[x]=0;
+  for (byte x = 0; x < 3; x++) ZZ[x]=0;
+  // checks for a 2 millisecond sync pulse signal with a tollerance of 500 microsecons
+  // Serial.println("IR input set up.... Ready!...");
+  if (pulseIn(IR_Sensor_Pin, LOW, 150000) > 2250) {
       // stores each pulse or bit, individually
-      PLTTO[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // P0
-      PLTTO[1] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // P1
-      TLTTO[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // T0
-      TLTTO[1] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // T1
-      TLTTO[2] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // T2
-      DLTTO[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D0
-      DLTTO[1] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D1
-      // run a test on the tag before anything else:
-      bool ISLTTO = true;
-      if (PLTTO[0] < 750 || PLTTO[0] > 2250) {ISLTTO = false;}
-      if (PLTTO[1] < 750 || PLTTO[1] > 2250) {ISLTTO = false;}
-      if (TLTTO[0] < 750 || TLTTO[0] > 2250) {ISLTTO = false;}
-      if (TLTTO[1] < 750 || TLTTO[1] > 2250) {ISLTTO = false;}
-      if (TLTTO[2] < 750 || TLTTO[2] > 2250) {ISLTTO = false;}
-      if (DLTTO[0] < 750 || DLTTO[0] > 2250) {ISLTTO = false;}
-      if (DLTTO[1] < 750 || DLTTO[1] > 2250) {ISLTTO = false;} 
-      if (ISLTTO) { // this means this is a good tag and we are most likely using it
-        // now lets check what kind of tag it is...
-        if (PLTTO[0] > 1750 || PLTTO[1] > 1750) { // this is a hosted game
-          LTTOTagType = 0;
-        } else {
-          LTTOTagType = 1; // use 1 as a grab and go tag
-          // so we know it is a grab and go, but it still could be a zone tag, lets be sure...
-          if (TLTTO[0] > 1750) {
-            LTTOTagType = 2; // it is a zone tag.
-          }
-        }
-        if (LTTOTagType < 2) {
-          PrintLTTOTag(); // runs a proceedure, see proceedure for details
-          IDLTTOTeam(); // check team
-          IDLTTODamage(); // check the damageif (CAPTURABLEEMITTER) {
-          ChangeBaseAlignment();
-          if (BASICDOMINATION) {
-            BasicDomination();
-          }
-          if (TAGACTIVATEDIR) {
-            if (TAGACTIVATEDIRCOOLDOWN) {
-              TAGACTIVATEDIR = false;
-              if (ANYTEAM) {
-                Team = TeamID;
-              }
-              CoolDownStart = millis();
-              resetRGB();
-              RGBRED = true;
-            }
-            VerifyCurrentIRTagSelection();
-            BUZZ = true;
-          }
-          if (TAGACTIVATEDIRCOOLDOWN) {
-            if (!TAGACTIVATEDIR) {
-              // this means that the base is on cool down, should send alarm or damage or something
-            }
-          }
-        }
+      BB[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // B1
+      BB[1] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // B2
+      BB[2] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // B3
+      BB[3] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // B4
+      PP[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // P1
+      PP[1] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // P2
+      PP[2] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // P3
+      PP[3] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // P4
+      TT[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // T1
+      TT[1] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // T2
+      DD[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D1
+      DD[1] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D2
+      DD[2] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D3
+      DD[3] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D4
+      DD[4] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D5
+      DD[5] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D6
+      DD[6] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D7
+      DD[7] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // D8
+      CC[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // C1
+      ZZ[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // Z1
+      ZZ[1] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // Z2
+      ZZ[2] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // Z3
+      XX[0] = (pulseIn(IR_Sensor_Pin, LOW, 5000)); // X1
+      if (ZZ[2] > 250 && XX[0] < 250 && BB[0] < 1250) {
+        Serial.println("Evolver Tag Confirmed");
+        PrintReceivedTag();
+        teamID();
+        IDEvolverPlayer();
+        IDShot();
+        IDDamage();
+        //IDPower();
+        IDCritical();
+        NEWTAGRECEIVED = true;
+      } else {
+        Serial.println("Protocol not Recognized");
       }
+    } else {
+      //Serial.println("Incorrect Sync Bits from Protocol, not BRX");
     }
-  }
 }
-//******************************************************************************************************************************************************************************************
 
 //*************************************************************************
 //************************** IR LED OBJECTS *******************************
@@ -4107,26 +1779,6 @@ void pulseIR(long microsecs) {
     microsecs -= 26;
   }
   sei();  // this turns them back on
-}
-void SendLTTOIR() {
-  Serial.println("Sending IR signal");
-  pulseIR(3000); // sync
-  delayMicroseconds(6000); // delay
-  pulseIR(SyncLTTO); // sync
-  delayMicroseconds(2000); // delay
-  pulseIR(LTTOA[0]); // 
-  delayMicroseconds(2000); // delay
-  pulseIR(LTTOA[1]); // 
-  delayMicroseconds(2000); // delay
-  pulseIR(LTTOA[2]); //
-  delayMicroseconds(2000); // delay
-  pulseIR(LTTOA[3]); // 
-  delayMicroseconds(2000); // delay
-  pulseIR(LTTOA[4]); // 
-  delayMicroseconds(2000); // delay
-  pulseIR(LTTOA[5]); // 
-  delayMicroseconds(2000); // delay
-  pulseIR(LTTOA[6]); // 
 }
 void SendIR() {
   Serial.println("Sending IR signal");
@@ -4182,150 +1834,13 @@ void SendIR() {
   delayMicroseconds(500); // delay
   pulseIR(Z[1]); // Z1
 }
-void CustomLTTOTag() {
-  if (LTTORESPAWN) {
-    SyncLTTO = 6000;
-    LTTOA[0] = 1000;
-    LTTOA[1] = 1000;
-    LTTOA[2] = 1000;
-    LTTOA[3] = 2000;
-    LTTOA[4] = 2000;
-    LTTOA[5] = 0;
-    LTTOA[6] = 0;
-    SendLTTOIR();
-    Serial.println("Sent LTTO Tag - Respawn");
-  }
-  if (LTTOOTZ) {
-    SyncLTTO = 6000;
-    LTTOA[0] = 1000;
-    LTTOA[1] = 1000;
-    LTTOA[2] = 1000;
-    LTTOA[3] = 2000;
-    LTTOA[4] = 1000;
-    LTTOA[5] = 0000;
-    LTTOA[6] = 0000;
-    SendLTTOIR();
-    Serial.println("Sent LTTO Tag - OTZ");
-  }
-  if (LTTOGG) {
-    SyncLTTO = 3000;
-    LTTOA[0] = 1000;
-    LTTOA[1] = 1000;
-    LTTOA[2] = 1000;
-    if (Team == 0) {
-      LTTOA[3] = 1000;
-      LTTOA[4] = 1000;
-    }
-    if (Team == 1) {
-      LTTOA[3] = 1000;
-      LTTOA[4] = 2000;
-    }
-    if (Team == 2) {
-      LTTOA[3] = 2000;
-      LTTOA[4] = 1000;
-    }
-    if (Team == 3) {
-      LTTOA[3] = 2000;
-      LTTOA[4] = 2000;
-    }
-    if (LTTODamage == 1) {
-      LTTOA[5] = 1000;
-      LTTOA[6] = 1000;
-    }
-    if (LTTODamage == 2) {
-      LTTOA[5] = 1000;
-      LTTOA[6] = 2000;
-    }
-    if (LTTODamage == 3) {
-      LTTOA[5] = 2000;
-      LTTOA[6] = 1000;
-    }
-    if (LTTODamage == 4) {
-      LTTOA[5] = 2000;
-      LTTOA[6] = 2000;
-    }
-    SendLTTOIR();
-    Serial.println("Sent LTTO Tag - G&G");
-  }
-  if (LTTOHOSTED) {
-    SyncLTTO = 3000;
-    LTTOA[0] = 1000;
-    LTTOA[1] = 1000;
-    LTTOA[2] = 2000;
-    if (Team == 0) {
-      LTTOA[3] = 1000;
-      LTTOA[4] = 1000;
-    }
-    if (Team == 1) {
-      LTTOA[3] = 1000;
-      LTTOA[4] = 2000;
-    }
-    if (Team == 2) {
-      LTTOA[3] = 2000;
-      LTTOA[4] = 1000;
-    }
-    if (Team == 3) {
-      LTTOA[3] = 2000;
-      LTTOA[4] = 2000;
-    }
-    SendLTTOIR();
-    Serial.println("Sent LTTO Tag - Hostile");
-  }
-}
-void Sheilds() { // not set properly yet
-  BulletType = 15;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Damage = 55;
-  Critical = 0;
-  Power = 0;
-  SetIRProtocol();
-}
-void ArmorBoost() { // not set properly yet
-  BulletType = 15;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Damage = 55;
-  Critical = 0;
-  Power = 0;
-  SetIRProtocol();
-}
-void MedKit() { 
-  BulletType = 1;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Damage = 40;
-  Critical = 0;
-  Power = 0;
-  SetIRProtocol();
-}
-void RespawnStation() { // not set properly yet
+void RespawnStation() {
   BulletType = 15;
   Player = 63;
   Damage = 6;
   Critical = 1;
   Power = 0;
   SetIRProtocol();
-}
-void WRespawnStation() { // not set properly yet
-  // enable espnow based respawn function and IR based Respawn Function
-  // Firts IR:
-  BulletType = 15;
-  Player = 63;
-  Damage = 6;
-  Critical = 1;
-  Power = 0;
-  SetIRProtocol();
-  // Now ESPNOW:
-  datapacket1 = 99;
-  datapacket2 = 31110 + Team;
-  BROADCASTESPNOW = true;
 }
 void HeavyDamage() { // not set properly yet
   BulletType = 0;
@@ -4338,72 +1853,22 @@ void HeavyDamage() { // not set properly yet
   Power = 0;
   SetIRProtocol();
 }
-void MediumDamage() { // not set properly yet
-  BulletType = 0;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Damage = 50;
-  Critical = 0;
-  Power = 0;
-  SetIRProtocol();
-}
 void LightDamage() { // not set properly yet
   BulletType = 0;
   Player = 63;
   if (Player == PlayerID) {
     Player = random(63);
   }
-  Damage = 10;
-  Critical = 0;
-  Power = 0;
-  SetIRProtocol();
-}
-void GasGrenade() { // not set properly yet
-  BulletType = 11;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Damage = 1;
-  Critical = 0;
-  Power = 0;
-  SetIRProtocol();
-}
-void CaptureTheFlag() { // not set properly yet
-  BulletType = 15;
-  Player = 63;
-  Damage = 57;
+  Damage = 15;
   Critical = 0;
   Power = 0;
   SetIRProtocol();
 }
 void SwapBRX() {
-  BulletType = 1;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Damage = 1;
-  Critical = 0;
-  Power = 1;
-  SetIRProtocol();
   datapacket1 = PlayerID;
   datapacket2 = 31000;
   datapacket3 = 99;
   BROADCASTESPNOW = true;
-}
-void MotionSensor() {
-  BulletType = 15;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Damage = 10;
-  Critical = 0;
-  Power = 0;
-  SetIRProtocol();
 }
 void ControlPointLost() {
   BulletType = 15;
@@ -4433,56 +1898,12 @@ void ControlPointCaptured() {
   Power = 0;
   SetIRProtocol();
 }
-void KingOfHill() {
-  BulletType = 15;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Damage = 55;
-  Critical = 1;
-  Power = 0;
-  SetIRProtocol();
-}
-void Frag() {
-  BulletType = 10;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Damage = 200;
-  Critical = 0;
-  Power = 0;
-  SetIRProtocol();
-}
 void OwnTheZone() {
-  BulletType = 3;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Team = TeamID;
-  Damage = 10;
-  Critical = 0;
-  Power = 0;
-  SetIRProtocol();
   datapacket1 = 99;
   datapacket2 = 31100;
   datapacket3 = Team;
   BROADCASTESPNOW = true;
 }
-void HitTag() {
-  BulletType = 0;
-  Player = 63;
-  if (Player == PlayerID) {
-    Player = random(63);
-  }
-  Damage = 100;
-  Critical = 0;
-  Power = 0;
-  SetIRProtocol();
-}
-
 void SetIRProtocol() {
 // Set Player ID
 if (Player==0) {P[0]=500; P[1]=500; P[2]=500; P[3]=500; P[4]=500; P[5]=500;}
@@ -4978,44 +2399,18 @@ void paritycheck() {
   Serial.println(Z[0]);
   Serial.println(Z[1]);
 }
-
-
 void VerifyCurrentIRTagSelection() {
-  if (CAPTURETHEFLAG) {
-    CaptureTheFlag(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (GASGRENADE) {
-    GasGrenade(); // sets ir protocol to motion sensor yellow and sends it
-  }
   if (LIGHTDAMAGE) {
     LightDamage(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (MEDIUMDAMAGE) {
-    MediumDamage(); // sets ir protocol to motion sensor yellow and sends it
   }
   if (HEAVYDAMAGE) {
     HeavyDamage(); // sets ir protocol to motion sensor yellow and sends it
   }
-  if (FRAG) {
-    Frag(); // sets ir protocol to motion sensor yellow and sends it
-  }
   if (RESPAWNSTATION) {
     RespawnStation(); // sets ir protocol to motion sensor yellow and sends it
   }
-  if (WRESPAWNSTATION) {
-    WRespawnStation(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (MEDKIT) {
-    MedKit(); // sets ir protocol to motion sensor yellow and sends it
-  }
   if (LOOTBOX) {
     SwapBRX(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (ARMORBOOST) {
-    ArmorBoost(); // sets ir protocol to motion sensor yellow and sends it
-  }
-  if (SHEILDS) {
-    Sheilds(); // sets ir protocol to motion sensor yellow and sends it
   }
   if (CONTROLPOINTLOST) {
     ControlPointLost();
@@ -5023,76 +2418,25 @@ void VerifyCurrentIRTagSelection() {
   if (CONTROLPOINTCAPTURED) {
     ControlPointCaptured();
   }
-  if (CUSTOMLTTOTAG) {
-    CustomLTTOTag();
-  }
-  if (MOTIONSENSOR) {
-    MotionSensor();
-  }
   if (OWNTHEZONE) {
     OwnTheZone();
   }
-  BUZZ = true;
 }
 void ResetAllIRProtocols() {
-  MOTIONSENSOR = false;
   CONTROLPOINTLOST = false;
   CONTROLPOINTCAPTURED = false;
-  SWAPBRX = false;
-  OWNTHEZONE = false;
-  HITTAG = false;
-  CAPTURETHEFLAG = false;
-  GASGRENADE = false;
+  OWNTHEZONE = false;  
   LIGHTDAMAGE = false;
-  MEDIUMDAMAGE = false;
   HEAVYDAMAGE = false;
-  FRAG = false;
   RESPAWNSTATION = false;
-  MEDKIT = false;
   LOOTBOX = false;
-  ARMORBOOST = false;
-  SHEILDS = false;
-  CUSTOMLTTOTAG = false;
-  WRESPAWNSTATION = false;
 }
-
-//*************************************************************************
-//************************** PIEZO BUZZER OBJECTS *************************
-//*************************************************************************
-void buzz() {
-  digitalWrite(buzzer, HIGH); // sounds buzzer for 1 millisecond
-  delayMicroseconds(50);
-  digitalWrite(buzzer, LOW); // turns off buzzer
-  if (buzzerduration > 0) { //checks if buzzer timer is up
-    buzzerduration--; 
-  } else {
-    buzzerduration = fixedbuzzerduration; // setts buzzer duration back to default
-    BUZZ = false; // disables the buzzer
-    Serial.println("Buzzer Deactivated");
-  }
-}
-
 //*************************************************************************
 //**************************** GAME PLAY OBJECTS **************************
 //*************************************************************************
-
-
 void AddPointToTeamWithPossession() {
+  PlayerScore[PlayerID]++;
   TeamScore[TeamID]++;
-  if (FIVEMINUTETUGOWAR) {
-    if (TeamID != 0 && TeamScore[0] > 0) {
-      TeamScore[0]--;
-    }
-    if (TeamID != 1 && TeamScore[1] > 0) {
-      TeamScore[1]--;
-    }
-    if (TeamID != 2 && TeamScore[2] > 0) {
-      TeamScore[2]--;
-    }
-    if (TeamID != 3 && TeamScore[3] > 0) {
-      TeamScore[3]--;
-    }
-  }
   // do a gained lead check to determin leader and previous leader and notify players:
   if (TeamScore[0] > TeamScore[1] && TeamScore[0] > TeamScore[2] && TeamScore[0] > TeamScore[3]) {
     // Team 0 is in the lead.
@@ -5118,12 +2462,12 @@ void AddPointToTeamWithPossession() {
     BROADCASTESPNOW = true;
     Serial.println("A team has reached the goal, ending game");
   }
-}
-  
-void AddPointToPlayerWithPossession() {
-  PlayerScore[PlayerID]++;
-}
+} 
 void ResetScores() {
+  TeamID = 99;
+  LastPosessionTeam = 99;
+  MULTIBASEDOMINATION = false;
+  DOMINATIONCLOCK = false;
   int playercounter = 0;
   int teamcounter = 0;
   while (playercounter < 64) {
@@ -5136,6 +2480,9 @@ void ResetScores() {
     teamcounter++;
   }
   Serial.println("All scores reset");
+  datapacket1 = 199;
+  datapacket2 = 10401;
+  BROADCASTESPNOW = true;
 }
 void PostDominationScore() {
   // Clear the scoreterminal content
@@ -5166,7 +2513,7 @@ void PostDominationScore() {
       }
     }
     teamcounter++;
-    vTaskDelay(0);
+    delay(1);
   }
   int playercounter = 0;
   while (playercounter < 64) {
@@ -5178,10 +2525,144 @@ void PostDominationScore() {
       Serial.println(PlayerScore[playercounter]);
     }
     playercounter++;
-    vTaskDelay(0);
+    delay(1);
   }
 }
-
+void RunCaptureTheFlagR() {
+  
+}
+void RunCaptureTheFlagB() {
+  
+}
+void RunCaptureTheFlagY() {
+  
+}
+void RunCaptureTheFlagG() {
+  
+}
+void RunDominationGame() {
+  // need to be continuously awaiting a tag from ir sensor
+  // need to change alignment when a new team has the base by shooting it and do nothing if the same team shoots it that has posession
+  // need to accumulate a point for every second that a team has posession of the base and update the score on the web server
+  // need to broadcast a notification via espnow in case other domination bases are near by that are also keeping track of points for players, every second so that each base is current on scores
+  // need to change the color of the rgb led when a team has the base
+  // need to also broadcast what player has the base and award a point to the player that has the base in case playing free for all and to recognize mvps
+  if (GearMod == 0) {
+    receiveBRXir(); // runs the ir receiver, looking for brx ir protocols
+  }
+  if (GearMod == 1) {
+    ReceiveEvolverIR(); // runs the ir receiver, looking for brx ir protocols
+  }
+  if (NEWTAGRECEIVED) {
+    NEWTAGRECEIVED = false;
+    // need to check if the new tag is from the same team as the last one received
+    if (TeamID != LastPosessionTeam) {
+      // we had a turnover...
+      LastPosessionTeam = TeamID;
+      BasicDomination();
+    }
+  }
+  if (DOMINATIONCLOCK) {
+    if (currentMillis0 - 1000 > PreviousDominationClock) {
+      Serial.println("1 second lapsed under counter object");
+      PreviousDominationClock = currentMillis0;
+      Serial.println("Run points accumulator");
+      AddPointToTeamWithPossession();
+      Serial.println("Enable Score Posting");
+      UPDATEWEPAPP = true;
+      rgbblink();
+    }
+  }
+}
+void FiveMinuteScoreCheck() {
+  if (TeamScore[0] > 300 || TeamScore[1] > 300 || TeamScore[2] > 300 || TeamScore[3] > 300) {
+    // one team has 5 minutes
+    DOMINATIONCLOCK = false;
+    MULTIBASEDOMINATION = false;
+    // ends the game for everyone
+    datapacket2 = 1410 + TeamID;
+    datapacket1 = 99;
+    BROADCASTESPNOW = true;
+    Serial.println("A team has reached the goal, ending game");
+  }
+  if (TeamScore[0] == 270 || TeamScore[1] == 270 || TeamScore[2] == 270 || TeamScore[3] == 270) {
+    // one team has 4.5 minutes
+    // ends the game for everyone
+    datapacket2 = 1430 + TeamID;
+    datapacket1 = 99;
+    BROADCASTESPNOW = true;
+    Serial.println("A team has reached the goal, ending game");
+  }
+}
+void TenMinuteScoreCheck() {
+  if (TeamScore[0] > 600 || TeamScore[1] > 600 || TeamScore[2] > 600 || TeamScore[3] > 600) {
+    // one team has 10 minutes
+    DOMINATIONCLOCK = false;
+    MULTIBASEDOMINATION = false;
+    // ends the game for everyone
+    datapacket2 = 1410 + TeamID;
+    datapacket1 = 99;
+    BROADCASTESPNOW = true;
+    GAMEOVER = true;
+    Serial.println("A team has reached the goal, ending game");
+  }
+  if (TeamScore[0] == 570 || TeamScore[1] == 570 || TeamScore[2] == 570 || TeamScore[3] == 570) {
+    // one team has 9.5 minutes
+    datapacket2 = 1430 + TeamID;
+    datapacket1 = 99;
+    BROADCASTESPNOW = true;
+    GAMEOVER = true;
+    Serial.println("A team has reached the goal, ending game");
+  }
+}
+void RunByShotAccumulator() {
+  // need to be continuously awaiting a tag from ir sensor
+  // need to change alignment when a new team has the base by shooting it and do nothing if the same team shoots it that has posession
+  // need to accumulate a point for every time a new shot comes in
+  // need to broadcast a notification via espnow in case other domination bases are near by that are also keeping track of points for players, every second so that each base is current on scores
+  // need to change the color of the rgb led when a team has the base or is winning rather
+  // need to also broadcast what player has the base and award a point to the player that has the base in case playing free for all and to recognize mvps
+  if (GearMod == 0) {
+    receiveBRXir(); // runs the ir receiver, looking for brx ir protocols
+  }
+  if (GearMod == 1) {
+    ReceiveEvolverIR(); // runs the ir receiver, looking for brx ir protocols
+  }
+  if (NEWTAGRECEIVED) {
+    NEWTAGRECEIVED = false;
+    Serial.println("Run points accumulator");
+    AddPointToTeamWithPossession();
+    Serial.println("Enable Score Posting");
+    UPDATEWEPAPP = true;
+    SharePointsWithOthers();
+    // need to check if the new tag is from the same team as the leader or not
+    // lastposessionteam is being used as current team winner for this game mode
+    if (TeamID != LastPosessionTeam) {
+      // SINCE WE COULD HAVE A NEW LEADER, LETS CHECK TO BE SURE
+      // if it is a new leader, we need to alter the team id before 
+      if (TeamScore[0] > TeamScore[1] && TeamScore[0] > TeamScore[3]) {
+        TeamID = 0;  
+      }
+      if (TeamScore[1] > TeamScore[0] && TeamScore[1] > TeamScore[3]) {
+        TeamID = 1; 
+      }
+      if (TeamScore[3] > TeamScore[1] && TeamScore[3] > TeamScore[0]) {
+        TeamID = 3;     
+      }
+      LastPosessionTeam = TeamID;
+      RGBDEMOMODE = false;
+      AlignRGBWithTeam();
+    }
+  }
+}
+void SharePointsWithOthers() {
+  int teamvalue = 100 * TeamID; // 0 for red, 100 for blue, 200 for yellow, 300 for green
+  datapacket2 = 10000 + teamvalue + PlayerID; // example team blue with player 16, 10116
+  datapacket1 = 199;
+  Serial.println("sending team and player alignment to other jboxes, here is the value being sent: " + String(datapacket2));
+  datapacket3 = JBOXID;
+  BROADCASTESPNOW = true;
+}
 void connect_wifi() {
   Serial.println("Waiting for WiFi");
   WiFi.begin(OTAssid.c_str(), OTApassword.c_str());
@@ -5194,13 +2675,11 @@ void connect_wifi() {
       ESP.restart();
     }
   }
-
   Serial.println("");
   Serial.println("WiFi connected");
   Serial.println("IP address: ");
   Serial.println(WiFi.localIP());
 }
-
 void firmwareUpdate(void) {
   WiFiClientSecure client;
   client.setCACert(rootCACertificate);
@@ -5263,10 +2742,12 @@ int FirmwareVersionCheck(void) {
     if (payload.equals(FirmwareVer)) {
       UPTODATE = true;
       Serial.printf("\nDevice already on latest firmware version:%s\n", FirmwareVer);
+      EEPROM.write(0, 0); // set up for upgrade confirmation
+      EEPROM.commit(); // store data
       return 0;} 
     else 
     {
-      EEPROM.write(0, 1); // set up for upgrade confirmation
+      EEPROM.write(0, 0); // set up for upgrade confirmation
       EEPROM.commit(); // store data
       Serial.println(payload);
       Serial.println("New firmware detected");
@@ -5284,125 +2765,45 @@ void loop1(void *pvParameters) {
   Serial.println(xPortGetCoreID());
   while(1) { // starts the forever loop
     // put all the serial activities in here for communication with the brx
-    unsigned long currentMillis0 = millis(); // sets the timer for timed operations
-    //**************************************************************************************
-    // RGB main functions: 
-    if (currentMillis0 - rgbpreviousMillis >= rgbinterval) {
-      rgbpreviousMillis = currentMillis0;
-      rgbblink();
-      if (RGBDEMOMODE) {
-        changergbcolor();
-      }
+    currentMillis0 = millis(); // sets the timer for timed operations
+    if (Function == 0) { // basic domination mode
+      RunDominationGame();      
     }
-    //**************************************************************************************
-    // IR LED main functions: 
-    if (SINGLEIRPULSE) {
-      SINGLEIRPULSE = false;
-      VerifyCurrentIRTagSelection();  // runs object for identifying set ir protocol and send it
-      ResetAllIRProtocols();
-      if (CAPTURABLEEMITTER) {
-        RESPAWNSTATION = true;
-      }
-      Serial.println("Executed Single IR Pulse Object");
-    }
-    if (BASECONTINUOUSIRPULSE) {
-      if (currentMillis0 - irledpreviousMillis >= irledinterval) {
-        irledpreviousMillis = currentMillis0;
-        VerifyCurrentIRTagSelection(); // runs object for identifying set ir protocol and send it
-        Serial.println("Executed Base Continuous IR Pulse Object");
-      }
-    }
-    // else {Serial.println("base continuous IR disabled");}
-    //**************************************************************************************
-    // IR Receiver main functions:
-    if (ENABLEIRRECEIVER || TAGACTIVATEDIR) { // default has ir receiver enabled for auto game start
-      if (GearMod == 0) {
-        receiveBRXir(); // runs the ir receiver, looking for brx ir protocols
-      }
-      if (GearMod == 1) {
-        ReceiveLTTO(); // runs the ir receiver, looking for LTTO ir protocols
-      }
-      if (GearMod == 2) {
-        receiveBRXir(); // runs the ir receiver, looking for BRP protocol
-      }
-      if (TAGACTIVATEDIRCOOLDOWN) {
-        if (!TAGACTIVATEDIR) {
-          // Base is in cool down
-          if (currentMillis0 - CoolDownStart > CoolDownInterval) {
-            // Cool down is over
-            TAGACTIVATEDIR = true;
-            resetRGB;
-            RGBWHITE = true;
-            Serial.println("Cool Down Is Over");
-          }
-        }
-      }
-    }
-    //**********************************************************************
-    // Piezo Buzzer main functions:
-    if (BUZZ) {
-      buzz();
-    }
-    //**********************************************************************
-    // Game Play functions:
-    if (BASICDOMINATION) {
-      //Serial.println("basic domination toggle confirmed active");
+    if (Function == 1) {
+      RunDominationGame();
       if (DOMINATIONCLOCK) {
-        //Serial.println("dominationclock toggle confirmed active");
-        if (currentMillis0 - 1000 > PreviousDominationClock) {
-          Serial.println("1 second lapsed under counter object");
-          PreviousDominationClock = currentMillis0;
-          Serial.println("Run points accumulator for teams");
-          AddPointToTeamWithPossession();
-          Serial.println("Run points accumulator for Players");
-          AddPointToPlayerWithPossession();
-          Serial.println("Enable Score Posting");
-          if (FIVEMINUTEDOMINATION) {
-            if (TeamScore[0] > 300 || TeamScore[1] > 300 || TeamScore[2] > 300 || TeamScore[3] > 300) {
-              // one team has 5 minutes
-              DOMINATIONCLOCK = false;
-              BASICDOMINATION = false;
-              // ends the game for everyone
-              datapacket2 = 1410 + TeamID;
-              datapacket1 = 99;
-              BROADCASTESPNOW = true;
-              Serial.println("A team has reached the goal, ending game");
-            }
-            if (TeamScore[0] == 270 || TeamScore[1] == 270 || TeamScore[2] == 270 || TeamScore[3] == 270) {
-              // one team has 4.5 minutes
-              //DOMINATIONCLOCK = false;
-              //BASICDOMINATION = false;
-              // ends the game for everyone
-              datapacket2 = 1430 + TeamID;
-              datapacket1 = 99;
-              BROADCASTESPNOW = true;
-              Serial.println("A team has reached the goal, ending game");
-            }
-          }
-          if (TENMINUTEDOMINATION) {
-            if (TeamScore[0] > 600 || TeamScore[1] > 600 || TeamScore[2] > 600 || TeamScore[3] > 600) {
-              // one team has 10 minutes
-              DOMINATIONCLOCK = false;
-              BASICDOMINATION = false;
-              // ends the game for everyone
-              datapacket2 = 1410 + TeamID;
-              datapacket1 = 99;
-              BROADCASTESPNOW = true;
-              Serial.println("A team has reached the goal, ending game");
-            }
-            if (TeamScore[0] == 570 || TeamScore[1] == 570 || TeamScore[2] == 570 || TeamScore[3] == 570) {
-              // one team has 9.5 minutes
-              //DOMINATIONCLOCK = false;
-              //BASICDOMINATION = false;
-              // ends the game for everyone
-              datapacket2 = 1430 + TeamID;
-              datapacket1 = 99;
-              BROADCASTESPNOW = true;
-              Serial.println("A team has reached the goal, ending game");
-            }
-          }
-        }
+        FiveMinuteScoreCheck();
       }
+    }
+    if (Function == 2) {
+      RunDominationGame();
+      if (DOMINATIONCLOCK) {
+        TenMinuteScoreCheck();
+      }
+    }
+    if (Function == 3) {
+      RunByShotAccumulator();
+    }
+    if (Function == 40){
+      RunCaptureTheFlagR();
+    }
+    if (Function == 41) {
+      RunCaptureTheFlagB();
+    }
+    if (Function == 42) {
+      RunCaptureTheFlagY();
+    }
+    if (Function == 42) {
+      RunCaptureTheFlagG();
+    }
+    if (Function == 5) {
+      
+    }
+    if (Function == 6) {
+      
+    }
+    if (Function == 7) {
+      
     }
     delay(1); // this has to be here or it will just continue to restart the esp32
   }
@@ -5414,90 +2815,16 @@ void loop2(void *pvParameters) {
   Serial.print("cOMMS loop running on core ");
   Serial.println(xPortGetCoreID());
   // run EEPROM verifications
-  incomingData1 = JBOXID; // set incoming data to jbox id for processing of commands 
-  int savedsettings = 0;
-  // read rest of values for settings 1-11 and apply to device
-  savedsettings = EEPROM.read(1);
-  if (savedsettings > 0) { // checking if the flash has a saved data set
-    // primary function - 9 - 10000
-    incomingData2 = EEPROM.read(1);
-    incomingData2 = incomingData2 + 10000;
-    ProcessIncomingCommands();
-    delay(10);
+  int tempsetting = EEPROM.read(1);
+  if (tempsetting < 255) {
+    Function = tempsetting;
   }
-  savedsettings = EEPROM.read(2);
-  if (savedsettings > 0) { // checking if the flash has a saved data set
-    // ir emitter type - 17 - 10100
-    incomingData2 = EEPROM.read(2);
-    incomingData2 = incomingData2 + 10100;
-    ProcessIncomingCommands();
-    delay(10);
-  }
-  savedsettings = EEPROM.read(3);
-  if (savedsettings > 0) { // checking if the flash has a saved data set
-    // team alignment - 5 - 10200
-    incomingData2 = EEPROM.read(3);
-    incomingData2 = incomingData2 + 10200;
-    ProcessIncomingCommands();
-    delay(10);
-  }
-  savedsettings = EEPROM.read(4);
-  if (savedsettings > 0) { // checking if the flash has a saved data set
-    // ir emitter frequency - 8 - 10300
-    incomingData2 = EEPROM.read(4);
-    incomingData2 = incomingData2 + 10300;
-    ProcessIncomingCommands();
-    delay(10);
-  }
-  savedsettings = EEPROM.read(5);
-  if (savedsettings > 0) { // checking if the flash has a saved data set
-    // ir cool down time - 13 - 10400
-    incomingData2 = EEPROM.read(5);
-    incomingData2 = incomingData2 + 10400;
-    ProcessIncomingCommands();
-    delay(10);
-  }
-  savedsettings = EEPROM.read(6);
-  if (savedsettings > 0) { // checking if the flash has a saved data set
-    // base tag count for capture - 10 - 10500
-    incomingData2 = EEPROM.read(6);
-    incomingData2 = incomingData2 + 10500;
-    ProcessIncomingCommands();
-    delay(10);
-  }
-  savedsettings = EEPROM.read(7);
-  if (savedsettings > 0) { // checking if the flash has a saved data set
-    // gear selection - 3 - 10600
-    incomingData2 = EEPROM.read(7);
-    incomingData2 = incomingData2 + 10600;
-    ProcessIncomingCommands();
-    delay(10);
-  }
-  savedsettings = EEPROM.read(8);
-  if (savedsettings >= 0) { // checking if the flash has a saved data set
-    // ltto tag type - 4 - 10700
-    incomingData2 = EEPROM.read(8);
-    incomingData2 = incomingData2 + 10700;
-    ProcessIncomingCommands();
-    delay(10);
-  }
-  savedsettings = EEPROM.read(9);
-  if (savedsettings > 0) { // checking if the flash has a saved data set
-    // ltto damage - 4 - 10150
-    incomingData2 = EEPROM.read(9);
-    incomingData2 = incomingData2 + 10150;
-    ProcessIncomingCommands();
-    delay(10);
-  }
-  savedsettings = EEPROM.read(10);
-  if (savedsettings > 0) { // checking if the flash has a saved data set
-    // jbox id from 100 to 120
-    JBOXID = EEPROM.read(10);
-    Serial.println("JBOXID = " + String(JBOXID));
-    delay(10);
+  tempsetting = EEPROM.read(2);
+  if (tempsetting < 255) {
+    GearMod = tempsetting;
   }
   while (1) { // starts the forever loopws.cleanupClients();
-    unsigned long currentMillis1 = millis(); // sets the timer for timed operations
+    currentMillis1 = millis(); // sets the timer for timed operations
     ws.cleanupClients();
     if (BROADCASTESPNOW) {
       BROADCASTESPNOW = false;
@@ -5506,29 +2833,29 @@ void loop2(void *pvParameters) {
       Serial.println("Sent Data Via ESPNOW");
       ResetReadings();
     }
-    if (BASICDOMINATION) {
-      if (currentMillis1 - PreviousMillis > 5000) {
-        PreviousMillis = currentMillis1;
-        UpdateWebApp0();
-        //Serial.println("updated scores on web app");
-        if (MULTIBASEDOMINATION) {
-          datapacket2 = 903;
-          datapacket1 = 99;
-          String ScoreData = String(TeamScore[0])+","+String(TeamScore[1])+","+String(TeamScore[2])+","+String(TeamScore[3]);
-          Serial.println("Sending the following Score Data to Server");
-          Serial.println(ScoreData);
-          BROADCASTESPNOW = true;
+    if (MULTIBASEDOMINATION) {
+      if (currentMillis1 - previousMillis1 > 1000) {  // will store last time LED was updated
+        // NEED TO APPLY POINTS FOR OTHER DOMINATION BOXES POSESSIONS
+        previousMillis1 = currentMillis1;
+        int processcounter = 0;
+        while (processcounter < 21) {
+          if (JboxInPlay[processcounter] == 1) {
+            PlayerScore[JboxPlayerID[processcounter]]++;
+            TeamScore[JboxTeamID[processcounter]]++;
+            Serial.println("added a point for a multi base domination JBOX");
+          }
+          processcounter++;
         }
       }
     }
-    //**************************************************************************************
-    // LoRa Receiver Main Functions:
-    if (LORALISTEN) {
-       ReceiveTransmission();
+    if (GAMEOVER) {
+      GAMEOVER = false;
+      ResetScores();
     }
-    if (ENABLELORATRANSMIT) {
-      TransmitLoRa();
-      ENABLELORATRANSMIT = false;
+    if (currentMillis1 - LastScoreUpdate > 1000) {
+      LastScoreUpdate = currentMillis1;
+      UpdateWebApp0();
+      UpdateWebApp2();
     }
     delay(1); // this has to be here or the esp32 will just keep rebooting
   }
@@ -5544,12 +2871,18 @@ void setup(){
   //***********************************************************************
   // initialize EEPROM
   EEPROM.begin(EEPROM_SIZE);
+  JBOXID = EEPROM.read(10);
+  ssid = "JBOX#" + String(JBOXID);
   int bootstatus = EEPROM.read(0);
   Serial.print("boot status = ");
   Serial.println(bootstatus);
-  if (bootstatus > 0 && bootstatus < 255) {
+  if (bootstatus > 0 && bootstatus < 4) {
     Serial.println("Enabling OTA Update Mode");
-    EEPROM.write(0, 0);
+    bootstatus++;
+    if (bootstatus == 4) {
+      bootstatus = 0;
+    }
+    EEPROM.write(0, bootstatus);
     EEPROM.commit();
     OTAMODE = true;
   }
@@ -5578,7 +2911,7 @@ void setup(){
   // Connect to Wi-Fi
   Serial.println("Starting AP");
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(ssid, password);
+  WiFi.softAP(ssid.c_str(), password);
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP address: ");
   Serial.println(IP);
@@ -5590,24 +2923,13 @@ void setup(){
     Serial.print("Setting AP (Access Point)…");
     // Remove the password parameter, if you want the AP (Access Point) to be open
     WiFi.mode(WIFI_AP_STA);
-    WiFi.softAP(ssid, password);
+    WiFi.softAP(ssid.c_str(), password);
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
     Serial.println(IP);
     Serial.print("ESP Board MAC Address:  ");
     Serial.println(WiFi.macAddress());
     Serial.println("Starting ESPNOW");
-    //IntializeESPNOW();
-    //delay(1000);
-    //datapacket1 = 9999;
-    //getReadings();
-    //BroadcastData(); // sending data via ESPNOW
-    //Serial.println("Sent Data Via ESPNOW");
-    //ResetReadings();
-    //while (OTApassword == "dontchangeme") {
-      //vTaskDelay(1);
-    //}
-    //delay(2000);
     Serial.println("wifi credentials");
     Serial.println(OTAssid);
     Serial.println(OTApassword);
@@ -5671,7 +2993,7 @@ void setup(){
   // Connect to Wi-Fi
   Serial.println("Starting AP");
   WiFi.mode(WIFI_AP_STA);
-  WiFi.softAP(ssid, password);
+  WiFi.softAP(ssid.c_str(), password);
   IPAddress IP = WiFi.softAPIP();
   Serial.print("AP IP address: ");
   Serial.println(IP);
@@ -5683,9 +3005,6 @@ void setup(){
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     request->send_P(200, "text/html", index_html, processor);
   });
-  //server1.on("/scores", HTTP_GET, [](AsyncWebServerRequest *request){
-    //request->send_P(200, "text/html", index1_html, processor);
-  //});
   // json events
     events.onConnect([](AsyncEventSourceClient *client){
       if(client->lastId()){
@@ -5755,7 +3074,6 @@ void setup(){
   });
   // Start server
   server.begin();
-  //server1.begin();
   //***********************************************************************
   // Start ESP Now
   Serial.print("ESP Board MAC Address:  ");
