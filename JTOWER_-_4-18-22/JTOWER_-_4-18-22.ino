@@ -149,10 +149,10 @@ int ESPNOWPreviousMillis = 0;
 //*********************** LORA VARIABLE DELCARATIONS **********************
 //*************************************************************************
 String LoRaDataReceived; // string used to record data coming in
-String tokenStrings[5]; // used to break out the incoming data for checks/balances
+String tokenStrings[8]; // used to break out the incoming data for checks/balances
 String LoRaDataToSend; // used to store data being sent from this device
 
-bool LORALISTEN = false; // a trigger used to enable the radio in (listening)
+bool LORALISTEN = true; // a trigger used to enable the radio in (listening)
 bool ENABLELORATRANSMIT = false; // a trigger used to enable transmitting data
 
 int sendcounter = 0;
@@ -217,6 +217,8 @@ bool MULTIBASEDOMINATION = false;
 bool BASICDOMINATION = false; // a default game mode
 bool CAPTURETHEFLAGMODE = false;
 bool DOMINATIONCLOCK = false;
+byte TempDomTagCounter = 0;
+bool GasEm = false;
 bool POSTDOMINATIONSCORETOBLYNK = false;
 bool CAPTURABLEEMITTER = false;
 bool ANYTEAM = false;
@@ -258,7 +260,6 @@ bool SWAPBRX = false;
 bool OWNTHEZONE = false;
 bool HITTAG = false;
 bool CAPTURETHEFLAG = false;
-bool GASGRENADE = false;
 bool LIGHTDAMAGE = false;
 bool MEDIUMDAMAGE = false;
 bool HEAVYDAMAGE = false;
@@ -350,112 +351,135 @@ int LTTODamage = 1;
 // ESP Now Objects:
 //*****************************************************************************************
 // for resetting mac address to custom address:
-uint8_t newMACAddress[] = {0x32, 0xAE, 0xA4, 0x07, 0x0D, 0x09}; 
+uint8_t newMACAddress[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0xff}; 
 
 // REPLACE WITH THE MAC Address of your receiver, this is the address we will be sending to
 uint8_t broadcastAddress[] = {0x32, 0xAE, 0xA4, 0x07, 0x0D, 0x09};
 
 
-// Register peer
-esp_now_peer_info_t peerInfo;
+// data to process espnow data
+String TokenStrings[20];
 
-// Define variables to store and to be sent
-int datapacket1 = 99; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
-int datapacket2 = 32700; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
-int datapacket3 = JBOXID; // From - device ID
-String datapacket4 = "null"; // used for score reporting only
+long previngamemillis = 0;
+
+// Game Settings - Config:
+byte SettingsGameMode = 0; // default is team battle, 1 is royale
+byte SettingsLives = 0; // default low, 1 is high
+byte SettingsLighting = 0; // High is default, 1 is low
+byte SettingsGameTime = 0; // off is default, 1 is on
+byte SettingsRespawn = 0; // auto is default, 1 is manual
+byte ObjectiveMode = 0;
+
+String SendStartBeacon = "null";
+String ConfirmBeacon = "null";
 
 
-// Define variables to store incoming readings
-int incomingData1; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases
-int incomingData2; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
-int incomingData3; // From - device ID
-String incomingData4; // used for score reporting only
+bool INGAME = false;
 
-// Variable to store if sending data was successful
-String success;
+void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
+// Formats MAC Address
+{
+  snprintf(buffer, maxLength, "%02x:%02x:%02x:%02x:%02x:%02x", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
+}
 
-//Structure example to send data
-//Must match the receiver structure
-typedef struct struct_message {
-    int DP1; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
-    int DP2; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
-    int DP3; // From - device ID
-    char DP4[200]; // used for score reporting
-} struct_message;
-
-// Create a struct_message called DataToBroadcast to hold sensor readings
-struct_message DataToBroadcast;
-
-// Create a struct_message to hold incoming sensor readings
-struct_message incomingReadings;
-
-// trigger for activating data broadcast
-bool BROADCASTESPNOW = false; 
-
-// Callback when data is sent
-void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
-  Serial.print("\r\nLast Packet Send Status:\t");
+void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
+// Called when data is received
+{
+  // Only allow a maximum of 250 characters in the message + a null terminating byte
+  char buffer[ESP_NOW_MAX_DATA_LEN + 1];
+  int msgLen = min(ESP_NOW_MAX_DATA_LEN, dataLen);
+  strncpy(buffer, (const char *)data, msgLen);
+ 
+  // Make sure we are null terminated
+  buffer[msgLen] = 0;
+ 
+  // Format the MAC address
+  char macStr[18];
+  formatMacAddress(macAddr, macStr, 18);
+ 
+  // Send Debug log message to the serial port
+  Serial.printf("Received message from: %s - %s\n", macStr, buffer);
+  
+  // store and separate the buffer
+  String IncomingData = String(buffer);
+  char *ptr = strtok((char*)IncomingData.c_str(), ","); // looks for commas as breaks to split up the string
+  int index = 0;
+  while (ptr != NULL)
+  {
+    TokenStrings[index] = ptr; // saves the individual characters divided by commas as individual strings
+    index++;
+    ptr = strtok(NULL, ",");  // takes a list of delimiters
+  }
+  Serial.println("We have found " + String(index ) + " tokens");
+  int stringnumber = 0;
+  while (stringnumber < index) {
+    Serial.print("Token " + String(stringnumber) + ": ");
+    Serial.println(TokenStrings[stringnumber]);
+    stringnumber++;
+  }
+  if (TokenStrings[1] == "69") {
+    Serial.println("Received a game over winner Announcement");
+    Serial.println("reset scores button pressed");
+    Serial.println("All scores reset");
+    ResetScores();
+    rgbBlink();
+    colorposession = 7;
+  }
+}
+ 
+void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
+// Called when data is sent
+{
+  char macStr[18];
+  formatMacAddress(macAddr, macStr, 18);
+  Serial.print("Last Packet Sent to: ");
+  Serial.println(macStr);
+  Serial.print("Last Packet Send Status: ");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
-  if (status ==0){
-    success = "Delivery Success :)";
+}
+ 
+void broadcast(const String &message)
+// Emulates a broadcast
+{
+  // Broadcast a message to every device in range
+  uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, broadcastAddress, 6);
+  if (!esp_now_is_peer_exist(broadcastAddress))
+  {
+    esp_now_add_peer(&peerInfo);
   }
-  else{
-    success = "Delivery Fail :(";
+  // Send message
+  esp_err_t result = esp_now_send(broadcastAddress, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Broadcast message success");
   }
-}
-// Callback when data is received
-void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
-  memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
-  //digitalWrite(2, HIGH);
-  Serial.print("Bytes received: ");
-  Serial.println(len);
-  incomingData1 = incomingReadings.DP1; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
-  incomingData2 = incomingReadings.DP2; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
-  incomingData3 = incomingReadings.DP3; // From
-  //incomingData4 = incomingReadings.DP4; // From
-  Serial.println("DP1: " + String(incomingData1)); // INTENDED RECIPIENT
-  Serial.println("DP2: " + String(incomingData2)); // FUNCTION/COMMAN
-  Serial.println("DP3: " + String(incomingData3)); // From - device ID
-  Serial.print("DP4: "); // used for scoring
-  //Serial.println(incomingData4);
-  Serial.write(incomingReadings.DP4);
-  Serial.println();
-  incomingData4 = String(incomingReadings.DP4);
-  Serial.println(incomingData4);
-  ProcessIncomingCommands();
-  //Serial.print("cOMMS loop running on core ");
-  //Serial.println(xPortGetCoreID());
-}
-
-// object to generate random numbers to send
-void getReadings(){
-  // Set values to send
-  DataToBroadcast.DP1 = datapacket1;
-  DataToBroadcast.DP2 = datapacket2;
-  DataToBroadcast.DP3 = datapacket3;
-  datapacket4.toCharArray(DataToBroadcast.DP4, 200);
-  Serial.println(datapacket1);
-  Serial.println(datapacket2);
-  Serial.println(datapacket3);
-  Serial.println(datapacket4);
-}
-
-void ResetReadings() {
-  //datapacket1 = 99; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
-  datapacket2 = 32700; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
-  datapacket3 = JBOXID; // From - device ID
-  datapacket4 = "null";
-}
-
-// object for broadcasting the data packets
-void BroadcastData() {
-  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &DataToBroadcast, sizeof(DataToBroadcast));
-  if (result == ESP_OK) {
-    Serial.println("Sent with success");
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
   }
-  else {
-    Serial.println("Error sending the data");
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
   }
 }
 
@@ -473,37 +497,22 @@ void ChangeMACaddress() {
 }
 
 void IntializeESPNOW() {
-    // Set up the onboard LED
-  pinMode(2, OUTPUT);
-  
   // run the object for changing the esp default mac address
   ChangeMACaddress();
   
-  // Set device as a Wi-Fi Station
-  //WiFi.mode(WIFI_STA);
-  
-  // Init ESP-NOW
-  if (esp_now_init() != ESP_OK) {
-    Serial.println("Error initializing ESP-NOW");
-    return;
+  // Initialize ESP-NOW
+  if (esp_now_init() == ESP_OK)
+  {
+    Serial.println("ESP-NOW Init Success");
+    esp_now_register_recv_cb(receiveCallback);
+    esp_now_register_send_cb(sentCallback);
   }
-  
-  // Once ESPNow is successfully Init, we will register for Send CB to
-  // get the status of Trasnmitted packet
-  esp_now_register_send_cb(OnDataSent);  
-  
-  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
-  peerInfo.channel = 0;   // this is the channel being used
-  peerInfo.encrypt = false;
-  
-  // Add peer        
-  if (esp_now_add_peer(&peerInfo) != ESP_OK){
-    Serial.println("Failed to add peer");
-    return;
+  else
+  {
+    Serial.println("ESP-NOW Init Failed");
+    delay(3000);
+    ESP.restart();
   }
-  
-  // Register for a callback function that will be called when data is received
-  esp_now_register_recv_cb(OnDataRecv);
 }
 
 // **************************************************
@@ -984,32 +993,14 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "toggle14s") == 0) { // game reset
       Serial.println("reset scores button pressed");
       Serial.println("All scores reset");
-      datapacket1 = 199;
-      datapacket2 = 10401;
-      BROADCASTESPNOW = true;
       ResetScores();
       rgbBlink();
       colorposession = 7;
       // need to send a command to stop and reset other domination boxes as well
     }
-    if (strcmp((char*)data, "toggle14a") == 0) { // 
-      Serial.println("Anialate all players");
-      LastFunction = Function;
-      Function = 1000;
-      datapacket1 = 199;
-      datapacket2 = 32701;
-      BROADCASTESPNOW = true;
-      ORDER66 = true;
-      LoRaDataToSend = "ORDER66";
-      ENABLELORATRANSMIT = true;
-    }
     if (strcmp((char*)data, "toggle14b") == 0) { // 
       Serial.println("Return to normal functions");
       // reset esp
-      datapacket1 = 199;
-      datapacket2 = 32702;
-      getReadings();
-      BroadcastData(); // sending data via ESPNOW
       Serial.println("Sent Data Via ESPNOW");
       ORDER66 = false;
       LoRaDataToSend = "ENDORDER66";
@@ -1019,11 +1010,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "toggle14c") == 0) { // 
       Serial.println("Test Lora");
       LoRaDataToSend = "TEST";
-      datapacket1 = 199;
-      datapacket2 = 32704;
-      getReadings();
-      BroadcastData(); // sending data via ESPNOW
-      Serial.println("Sent Data Via ESPNOW");
       ResetScores();
       EEPROM.write(1, Function);
       EEPROM.commit();
@@ -1044,12 +1030,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.write(0, 1); // reset OTA attempts counter
       EEPROM.commit(); // Store in Flash
       // have other boxes in proximity update as well:
-      datapacket1 = 199;
-      datapacket2 = 32703;
-      getReadings();
-      BroadcastData(); // sending data via ESPNOW
-      Serial.println("Sent Data Via ESPNOW");
-      ResetReadings();
       delay(2000);
       ESP.restart();
       //INITIALIZEOTA = true;
@@ -1061,7 +1041,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Basic Domination");
       rgbBlink();
-      LORALISTEN = false;
+       
       colorposession = 7;
       ShowGameMode();
     }
@@ -1083,7 +1063,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Domination Node - ESPNOW");
       rgbBlink();
-      LORALISTEN = false;
+       
       colorposession = 7;
       ShowGameMode();
     }
@@ -1105,7 +1085,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("5 Minute Basic Domination");
       rgbBlink();
-      LORALISTEN = false;
+       
       colorposession = 7;
       ShowGameMode();
     }
@@ -1116,7 +1096,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("10 Minute Basic Domination");
       rgbBlink();
-      LORALISTEN = false;
+       
       colorposession = 7;
       ShowGameMode();
     }
@@ -1127,7 +1107,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Shot Accumulator Mode");
       rgbBlink();
-      LORALISTEN = false;
       colorposession = 7;
       ShowGameMode();
     }
@@ -1144,7 +1123,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBRED = true; colorposession = 0;
       rgbBlink();
-      LORALISTEN = false;
+       
       ShowGameMode();
     }
     if (strcmp((char*)data, "4b") == 0) {
@@ -1160,7 +1139,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBBLUE = true; colorposession = 1;
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1177,7 +1156,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBYELLOW = true; colorposession = 2;
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1194,7 +1173,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBGREEN = true; colorposession = 3;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1210,7 +1189,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBWHITE = true; colorposession = 4;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1226,7 +1205,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBPURPLE = true; colorposession = 5;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1242,7 +1221,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBCYAN = true; colorposession = 6;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1258,7 +1237,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBYELLOW = true; colorposession = 2;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1277,7 +1256,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBRED = true; colorposession = 0;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1296,7 +1275,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBBLUE = true; colorposession = 1;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1315,7 +1294,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBYELLOW = true; colorposession = 2;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1334,7 +1313,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBGREEN = true; colorposession = 3;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1353,7 +1332,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBWHITE = true; colorposession = 4;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1364,7 +1343,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Respawn Station Blue ");
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1375,7 +1354,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Respawn Station Green ");
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1386,7 +1365,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Respawn Station Yellow");
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1397,7 +1376,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Capturable Respawn Station");
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1408,7 +1387,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Own The Zone");
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1419,7 +1398,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Gas Drone");
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1430,7 +1409,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Gas Drone - 5 minutes");
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1449,7 +1428,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBCYAN = true; colorposession = 6;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1468,7 +1447,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBPURPLE = true; colorposession = 5;   
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1495,7 +1474,7 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBRED = true; colorposession = 0;
       rgbBlink();
-      LORALISTEN = false;
+       
       
       ShowGameMode();
     }
@@ -1740,86 +1719,6 @@ String processor(const String& var){
     }
   }
 }
-void ProcessIncomingCommands() { 
-  // need a command that resets scores ****
-  if (incomingData1 == JBOXID || incomingData1 == 199) { // data checked out to be intended for this JBOX or for all JBOXes
-    if (incomingData2 > 9999 && incomingData2 < 10400) {
-      // received a posession update from another JBOX, via espnow
-      // check that we need to process it:
-      if (Function == 6) {
-        int incomingplayerid = 0;
-        int incomingteamid = 0;
-        int tempvalue = incomingData2 - 10000;
-        if (tempvalue > 299) {
-          incomingteamid = 3;
-          incomingplayerid = tempvalue - 300;
-        } else {
-          if (tempvalue > 199) {
-            incomingteamid = 2;
-          incomingplayerid = tempvalue - 200;
-          } else {
-            if (tempvalue > 99) {
-              incomingteamid = 1;
-              incomingplayerid = tempvalue - 100;
-            } else {
-              incomingteamid = 0;
-              incomingplayerid = tempvalue;
-            }
-          }
-          int incomingjboxid = incomingData3 - 100;
-          JboxPlayerID[incomingjboxid] = incomingplayerid;
-          JboxTeamID[incomingjboxid] = incomingteamid;
-          JboxInPlay[incomingjboxid] = 1;
-          MULTIBASEDOMINATION = true;
-        }
-      }
-    }
-    if (incomingData2 == 10401) {
-      ResetScores();
-    }
-    if (incomingData2 == 32701 && ORDER66 == false) {
-      LastFunction = Function;
-      Function = 1000;
-      ORDER66 = true;
-      datapacket1 = 199;
-      datapacket2 = 32701;
-      BROADCASTESPNOW = true;
-    }
-    if (incomingData2 == 32702 && ORDER66 == true) {
-      Function = LastFunction;
-      ORDER66 = false;
-      datapacket1 = 199;
-      datapacket2 = 32702;
-      BROADCASTESPNOW = true;
-      getReadings();
-      BroadcastData(); // sending data via ESPNOW
-      Serial.println("Sent Data Via ESPNOW");
-      ResetReadings();
-      ESP.restart();
-    }
-    if (incomingData2 == 32703) {
-      Serial.println("OTA Update Mode");
-      rgbBlink();
-      EEPROM.write(0, 1); // reset OTA attempts counter
-      EEPROM.commit(); // Store in Flash
-      delay(2000);
-      ESP.restart();
-    }
-    if (incomingData2 == 32704) {
-      // running Lora Test
-      ResetScores();
-      EEPROM.write(1, Function);
-      EEPROM.commit();
-      Serial.println("Test Listen LoRa");
-      rgbBlink();
-      LORALISTEN = true;
-      ShowGameMode();
-    }
-  }
-  digitalWrite(2, LOW);
-}
-
-
 //*************************************************************************
 //*************************** RGB OBJECTS *********************************
 //*************************************************************************
@@ -2227,10 +2126,13 @@ void BasicDomination() {
   RGBDEMOMODE = false;
   StartShortBuzzer();
   AlignRGBWithTeam();
+  if (GearMod == 0) {
+    CONTROLPOINTCAPTURED = true;
+  }
   if (!DOMINATIONCLOCK) {
     DOMINATIONCLOCK = true;
+    Serial.println("enabled domination clock/counter");
   }
-  Serial.println("enabled domination clock/counter");
 }
 void ChangeBaseAlignment() {
   if (TeamID != Team) { // checks to see if tag hitting base is unfriendly or friendly
@@ -2800,10 +2702,7 @@ void LightDamage() { // not set properly yet
   SetIRProtocol();
 }
 void SwapBRX() {
-  datapacket1 = PlayerID;
-  datapacket2 = 31000;
-  datapacket3 = 99;
-  BROADCASTESPNOW = true;
+  
 }
 void ControlPointLost() {
   BulletType = 15;
@@ -2833,11 +2732,17 @@ void ControlPointCaptured() {
   Power = 0;
   SetIRProtocol();
 }
+void GasPlayers() {
+  BulletType = 11;
+  Player = 64;
+  Team = TeamID;
+  Damage = 1;
+  Critical = 0;
+  Power = 1;
+  SetIRProtocol();
+}
 void OwnTheZone() {
-  datapacket1 = 99;
-  datapacket2 = 31100;
-  datapacket3 = Team;
-  BROADCASTESPNOW = true;
+  
 }
 void SetBRPIRProtocol() {
 // Set Player ID
@@ -4338,47 +4243,16 @@ void ReceiveTransmission() {
         Serial.println(tokenStrings[8]);
         Serial.print("Token 9: ");
         Serial.println(tokenStrings[9]);
-        if (tokenStrings[2] = "CAPTURE") {
-          // THIS IS FROM A NODE DOMINATION BASE THAT HAS BEEN CAPTURED
-          // check game mode:
-          if (Function == 6) {
-            // This base is a master, time to process the data package
-            // token 3 is the base id, token 4 is the team id, token 5 is the player id
-            int incomingjboxid = tokenStrings[3].toInt();
-            incomingjboxid = incomingjboxid - 100;
-            JboxPlayerID[incomingjboxid] = tokenStrings[5].toInt();
-            JboxTeamID[incomingjboxid] = tokenStrings[4].toInt();
-            JboxInPlay[incomingjboxid] = 1;
-            MULTIBASEDOMINATION = true;
-            Serial.println("processed update from node lora jbox");
-          }
-        }
-        if (tokenStrings[2] == "ORDER66" && ORDER66 == false) {
-          // time to kill all players
-          LastFunction = Function;
-          Function = 1000;
-          ORDER66 = true;
-        }
         if (tokenStrings[2] = "GAMEOVER") {
           Serial.println("reset scores button pressed");
           Serial.println("All scores reset");
           ResetScores();
           rgbBlink();
-        }
-        if (tokenStrings[2] == "ENDORDER66" && ORDER66 == true) {
-          // time to kill all players
-          ORDER66 = false;
-          ESP.restart();
-        }
-        if (tokenStrings[2] == "TEST") {
-          // time to show device received a message
-          if (colorposession == 7) {
-            colorposession = 0;
-          } else {
-            colorposession++;
-          }
-          LoRaDataToSend = "TEST";
-          TransmitLoRa();
+          colorposession = 7;
+          String LeadPlayerID = tokenStrings[3];
+          String LeadTeamID = tokenStrings[4];
+          broadcast("36,69,"+LeadPlayerID+","+LeadTeamID+",42");
+          Serial.println("Sent Game Ending ESPNOW Command");
         }
         digitalWrite(LED_BUILTIN, HIGH); // iluminte the onboard led
         receivercounter();
@@ -4436,9 +4310,6 @@ void AddPointToTeamWithPossession() {
   if (CurrentDominationLeader != PreviousDominationLeader) { // We just had a change of score board leader
     PreviousDominationLeader = CurrentDominationLeader; // reset the leader board with new leader
     // Notifies players of leader change:
-    datapacket2 = 1420 + TeamID;
-    datapacket1 = 99;
-    BROADCASTESPNOW = true;
     Serial.println("A team has reached the goal, ending game");
   }
 } 
@@ -4594,7 +4465,7 @@ void RunEvolverUpgrade() {
   }
 }
 void RunDominationGame() {
-if (GearMod == 0) {
+  if (GearMod == 0) {
     receiveBRXir(); // runs the ir receiver, looking for brx ir protocols
   }
   if (GearMod == 1) {
@@ -4644,6 +4515,13 @@ if (GearMod == 0) {
       UPDATEWEPAPP = true;
       rgbblink();
       ShowScores();
+      if (GearMod == 0) {
+        TempDomTagCounter++;
+        if (TempDomTagCounter == 3) {
+          TempDomTagCounter = 0;
+          GasEm = true;
+        }
+      }
     }
   }
 }
@@ -4653,17 +4531,11 @@ void FiveMinuteScoreCheck() {
     DOMINATIONCLOCK = false;
     MULTIBASEDOMINATION = false;
     // ends the game for everyone
-    datapacket2 = 1410 + TeamID;
-    datapacket1 = 99;
-    BROADCASTESPNOW = true;
     StartLongBuzzer();
     Serial.println("A team has reached the goal, ending game");
   }
   if (TeamScore[0] == 270 || TeamScore[1] == 270 || TeamScore[2] == 270 || TeamScore[3] == 270) {
     // one team has 4.5 minutes
-    datapacket2 = 1430 + TeamID;
-    datapacket1 = 99;
-    BROADCASTESPNOW = true;
     Serial.println("A team is about to win");
   }
 }
@@ -4673,18 +4545,12 @@ void TenMinuteScoreCheck() {
     DOMINATIONCLOCK = false;
     MULTIBASEDOMINATION = false;
     // ends the game for everyone
-    datapacket2 = 1410 + TeamID;
-    datapacket1 = 99;
-    BROADCASTESPNOW = true;
     GAMEOVER = true;
     StartLongBuzzer();
     Serial.println("A team has reached the goal, ending game");
   }
   if (TeamScore[0] == 570 || TeamScore[1] == 570 || TeamScore[2] == 570 || TeamScore[3] == 570) {
     // one team has 9.5 minutes
-    datapacket2 = 1430 + TeamID;
-    datapacket1 = 99;
-    BROADCASTESPNOW = true;
     GAMEOVER = true;
     Serial.println("A team is about to win");
   }
@@ -4736,11 +4602,7 @@ void RunByShotAccumulator() {
 }
 void SharePointsWithOthers() {
   int teamvalue = 100 * TeamID; // 0 for red, 100 for blue, 200 for yellow, 300 for green
-  datapacket2 = 10000 + teamvalue + PlayerID; // example team blue with player 16, 10116
-  datapacket1 = 199;
-  Serial.println("sending team and player alignment to other jboxes, here is the value being sent: " + String(datapacket2));
-  datapacket3 = JBOXID;
-  BROADCASTESPNOW = true;
+  
 }
 void SharePointsWithOthersLoRa() {
   String FirstToken = "CAPTURE"; // 0 for red, 100 for blue, 200 for yellow, 300 for green, example team blue with player 16, 10116
@@ -5038,13 +4900,6 @@ for(;;) { // starts the forever loop
   }
   RunLEDSnake();
   ws.cleanupClients();
-  if (BROADCASTESPNOW) {
-    BROADCASTESPNOW = false;
-    getReadings();
-    BroadcastData(); // sending data via ESPNOW
-    Serial.println("Sent Data Via ESPNOW");
-    ResetReadings();
-  }
   if (MULTIBASEDOMINATION) {
     if (currentMillis0 - previousMillis0 > 1000) {  // will store last time LED was updated
       // NEED TO APPLY POINTS FOR OTHER DOMINATION BOXES POSESSIONS
@@ -5062,10 +4917,6 @@ for(;;) { // starts the forever loop
   }
   if (GAMEOVER) {
     GAMEOVER = false;
-    Serial.println("All scores reset");
-    datapacket1 = 199;
-    datapacket2 = 10401;
-    BROADCASTESPNOW = true;
     ResetScores();
   }
   if (DOMINATIONCLOCK == true || MULTIBASEDOMINATION == true) {
@@ -5074,6 +4925,14 @@ for(;;) { // starts the forever loop
       UpdateWebApp0();
       UpdateWebApp2();
     }
+  }
+  if (GasEm) {
+    GasEm = false;
+    GasPlayers();
+  }
+  if (CONTROLPOINTCAPTURED) {
+    CONTROLPOINTCAPTURED = false;
+    ControlPointCaptured();
   }
   //**************************************************************************************
   // LoRa Receiver Main Functions:
@@ -5120,7 +4979,7 @@ void setup(){
   if (Function == 0) {
       Serial.println("Basic Domination");
       rgbBlink();
-      LORALISTEN = false;
+       
       colorposession = 7;
   }
   if (Function == 4) {
@@ -5132,7 +4991,7 @@ void setup(){
   if (Function == 5) {
     Serial.println("Domination Node - ESPNOW");
       rgbBlink();
-      LORALISTEN = false;
+       
       colorposession = 7;
   }
   if (Function == 6) {
@@ -5144,19 +5003,18 @@ void setup(){
   if (Function == 1) {
     Serial.println("5 Minute Basic Domination");
       rgbBlink();
-      LORALISTEN = false;
+       
       colorposession = 7;
   }
   if (Function == 2) {
     Serial.println("10 Minute Basic Domination");
       rgbBlink();
-      LORALISTEN = false;
+       
       colorposession = 7;
   }
   if (Function == 3) {
     Serial.println("Shot Accumulator Mode");
       rgbBlink();
-      LORALISTEN = false;
       colorposession = 7;
   }
   if (Function == 40) {
@@ -5241,7 +5099,7 @@ void setup(){
     resetRGB(); 
     RGBRED = true; colorposession = 0;   
     rgbBlink();
-    LORALISTEN = false;
+     
     
   }
   if (Function == 51) {
@@ -5255,7 +5113,7 @@ void setup(){
     resetRGB(); 
     RGBBLUE = true; colorposession = 1;   
     rgbBlink();
-    LORALISTEN = false;
+     
     
   }
   if (Function == 52) {
@@ -5269,7 +5127,7 @@ void setup(){
     resetRGB(); 
     RGBYELLOW = true; colorposession = 2;   
     rgbBlink();
-    LORALISTEN = false;
+     
     
   }
   if (Function == 53) {
@@ -5283,7 +5141,7 @@ void setup(){
     resetRGB(); 
     RGBGREEN = true; colorposession = 3;   
     rgbBlink();
-    LORALISTEN = false;
+     
     
   }
   if (Function == 15) {
@@ -5557,7 +5415,7 @@ void loop() {
       }
     }
   }
-  if (Function == 8) {
+  if (Function == 3) {
     RunByShotAccumulator();
   }
   if (Function == 13) {
