@@ -24,10 +24,10 @@
 // change based upon board version
 int IRledPin =  26;    // LED connected to GPIO26, pin 21 for v5+ and pin 26 for v4 and earlier
 // serial definitions for LoRa
-#define SERIAL1_RXPIN 22 // TO LORA TX - 22 for v5 and 19 for 4-
+#define SERIAL1_RXPIN 19 // TO LORA TX - 22 for v5 and 19 for 4-
 #define SERIAL1_TXPIN 23 // TO LORA RX 23 all versions
 const int motionSensor = 34;
-#define DATAPIN    14 // DI/O for v4 boards it is 25, v5 is 14
+#define DATAPIN    25 // DI/O for v4 boards it is 25, v5 is 14
 #define CLOCKPIN   27 // CI/O
 // dotstar definitions
 #define NUMPIXELS 21 // Number of LEDs in strip
@@ -88,6 +88,7 @@ String OTApassword = "dontchangeme"; // Network password for OTA
 //*************************************************************************
 // These should be modified as applicable for your needs
 int JBOXID = 101; // this is the device ID, guns are 0-63, controlle ris 98, jbox is 100-120
+byte JBOXTYPE = 0; // Used for type of device used
 int DeviceSelector = JBOXID;
 int TaggersOwned = 64; // how many taggers do you own or will play?
 // Replace with your network credentials
@@ -831,7 +832,15 @@ const char index_html[] PROGMEM = R"rawliteral(
   <div class="content">
     <div class="card">
     <p><button id="loratest" class="button">Test Lora</button></p>
-    <h2>Device ID Assignment</h2>
+    <h2>Device Type</h2>
+      <p><select name="devicetype" id="devicetypeid">
+        <option value="965">Select JBOX ID</option>
+        <option value="800">JBOX</option>
+        <option value="801">JTOWER</option>
+        <option value="802">JBOX MINI</option>
+        </select>
+      </p>
+      <h2>Device ID Assignment</h2>
       <p><select name="devicename" id="devicenameid">
         <option value="965">Select JBOX ID</option>
         <option value="900">JBOX 100</option>
@@ -939,7 +948,7 @@ if (!!window.EventSource) {
     document.getElementById('killplayers').addEventListener('click', toggle14a);
     document.getElementById('playball').addEventListener('click', toggle14b);
     document.getElementById('devicenameid').addEventListener('change', handledevicename, false);
-    
+    document.getElementById('devicetypeid').addEventListener('change', handletypename, false);
   }
   function toggle14s(){
     websocket.send('toggle14s');
@@ -967,6 +976,10 @@ if (!!window.EventSource) {
   function handlemotion() {
     var xc = document.getElementById("motionid").value;
     websocket.send(xc);
+  }
+  function handledevicetype() {
+    var xp = document.getElementById("devicetypeid").value;
+    websocket.send(xp);
   }
   function handledevicename() {
     var xp = document.getElementById("devicenameid").value;
@@ -1523,6 +1536,27 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       rgbBlink();
       ShowGameMode();
     }
+    if (strcmp((char*)data, "800") == 0) {
+      JBOXTYPE = 0;
+      Serial.println("JBOX TYPE changed to JBOX");
+      EEPROM.write(3, JBOXTYPE);
+      EEPROM.commit();
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "801") == 0) {
+      JBOXTYPE = 1;
+      Serial.println("JBOX TYPE changed to JTOWER");
+      EEPROM.write(3, JBOXTYPE);
+      EEPROM.commit();
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "802") == 0) {
+      JBOXTYPE = 2;
+      Serial.println("JBOX TYPE changed to JBOX MINI");
+      EEPROM.write(3, JBOXTYPE);
+      EEPROM.commit();
+      rgbBlink();
+    }
     if (strcmp((char*)data, "900") == 0) {
       JBOXID = 100;
       Serial.println("JBOX ID changed to: " + String(JBOXID));
@@ -1748,16 +1782,6 @@ void AlignRGBWithTeam() {
   if (TeamID == 3) {
     RGBGREEN = true; colorposession = 3;
   }
-}
-void changergbcolor() {
-  int statuschange = 99;
-  if(RGBGREEN) {RGBGREEN = false; RGBWHITE = true; colorposession = 4; statuschange = 0;}
-  if(RGBRED) {RGBRED = false; RGBGREEN = true; colorposession = 3;}
-  if(RGBYELLOW) {RGBYELLOW = false; RGBRED = true; colorposession = 0;}
-  if(RGBBLUE) {RGBBLUE = false; RGBYELLOW = true; colorposession = 2;}
-  if(RGBPURPLE) {RGBPURPLE = false; RGBBLUE = true; colorposession = 1;}
-  if(RGBCYAN) {RGBCYAN = false; RGBPURPLE = true; colorposession = 5;}
-  if(RGBWHITE && statuschange == 99) {RGBWHITE = false; RGBCYAN = true; colorposession = 6;}
 }
 void rgbgreen(){
     digitalWrite(red, LOW); // turn the LED on 
@@ -4602,7 +4626,7 @@ void RunByShotAccumulator() {
 }
 void SharePointsWithOthers() {
   int teamvalue = 100 * TeamID; // 0 for red, 100 for blue, 200 for yellow, 300 for green
-  
+  broadcast("36,20,"+String(JBOXID)+","+String(TeamID)+","+String(PlayerID)+",42");
 }
 void SharePointsWithOthersLoRa() {
   String FirstToken = "CAPTURE"; // 0 for red, 100 for blue, 200 for yellow, 300 for green, example team blue with player 16, 10116
@@ -4898,7 +4922,9 @@ for(;;) { // starts the forever loop
     Serial.println("Core 0 Cycles per Second: " + String(SpeedRate0));
     Serial.println();
   }
-  RunLEDSnake();
+  if (JBOXTYPE != 3) {
+    RunLEDSnake();
+  }
   ws.cleanupClients();
   if (MULTIBASEDOMINATION) {
     if (currentMillis0 - previousMillis0 > 1000) {  // will store last time LED was updated
@@ -4936,12 +4962,14 @@ for(;;) { // starts the forever loop
   }
   //**************************************************************************************
   // LoRa Receiver Main Functions:
-  if (LORALISTEN) {
-     ReceiveTransmission();
-  }
-  if (ENABLELORATRANSMIT) {
-    TransmitLoRa();
-    ENABLELORATRANSMIT = false;
+  if (JBOXTYPE != 3) {
+    if (LORALISTEN) {
+       ReceiveTransmission();
+    }
+    if (ENABLELORATRANSMIT) {
+      TransmitLoRa();
+      ENABLELORATRANSMIT = false;
+    }
   }
   delay(1); // this has to be here or it will just continue to restart the esp32
   }
@@ -4957,6 +4985,10 @@ void setup(){
   //***********************************************************************
   // initialize EEPROM and stored sattings
   EEPROM.begin(EEPROM_SIZE);
+  JBOXTYPE = EEPROM.read(3);
+  if (JBOXTYPE == 255) {
+    JBOXTYPE = 0;
+  }
   JBOXID = EEPROM.read(10);
   ssid = "JBOX#" + String(JBOXID);
   int bootstatus = EEPROM.read(0);
@@ -4979,7 +5011,6 @@ void setup(){
   if (Function == 0) {
       Serial.println("Basic Domination");
       rgbBlink();
-       
       colorposession = 7;
   }
   if (Function == 4) {
@@ -4991,7 +5022,6 @@ void setup(){
   if (Function == 5) {
     Serial.println("Domination Node - ESPNOW");
       rgbBlink();
-       
       colorposession = 7;
   }
   if (Function == 6) {
@@ -5003,13 +5033,11 @@ void setup(){
   if (Function == 1) {
     Serial.println("5 Minute Basic Domination");
       rgbBlink();
-       
       colorposession = 7;
   }
   if (Function == 2) {
     Serial.println("10 Minute Basic Domination");
       rgbBlink();
-       
       colorposession = 7;
   }
   if (Function == 3) {
@@ -5024,7 +5052,6 @@ void setup(){
     Team == 0;
     resetRGB();
     RGBRED = true; colorposession = 0;
-    
   }
   if (Function == 41) {
     Serial.println("Evolver Capture The Flag - blue");
@@ -5033,7 +5060,6 @@ void setup(){
     Team == 1;
     resetRGB();
     RGBBLUE = true; colorposession = 1;
-    
   }
   if (Function == 42) {
     Serial.println("Evolver Capture The Flag - yellow");
@@ -5042,7 +5068,6 @@ void setup(){
     Team == 2;
     resetRGB();
     RGBYELLOW = true; colorposession = 2;
-    
   }
   if (Function == 43) {
     Serial.println("Evolver Capture The Flag - green");
@@ -5051,7 +5076,6 @@ void setup(){
     Team == 3;
     resetRGB();
     RGBGREEN = true; colorposession = 3;
-    
   }
   if (Function == 44) {
     BulletType = 10;
@@ -5059,7 +5083,6 @@ void setup(){
     Team == 2;  
     resetRGB(); 
     RGBWHITE = true; colorposession = 4; colorposession = 4;  
-     
   }
   if (Function == 45) {
     Serial.println("Evolver OTZ Station");
@@ -5068,7 +5091,6 @@ void setup(){
     Team == 2;  
     resetRGB(); 
     RGBPURPLE = true; colorposession = 5;  
-    
   }
   if (Function == 46) {
     Serial.println("Evolver Medic Station");
@@ -5077,7 +5099,6 @@ void setup(){
     Team == 2;  
     resetRGB(); 
     RGBCYAN = true; colorposession = 6;  
-    
   }
   if (Function == 47) {
     Serial.println("Evolver Upgrade Station");
@@ -5086,7 +5107,6 @@ void setup(){
     Team == 2;  
     resetRGB(); 
     RGBYELLOW = true; colorposession = 2;
-    
   }
   if (Function == 50) {
     Serial.println("BRX Red Respawn Station");
@@ -5099,8 +5119,6 @@ void setup(){
     resetRGB(); 
     RGBRED = true; colorposession = 0;   
     rgbBlink();
-     
-    
   }
   if (Function == 51) {
     Serial.println("BRX Blue Respawn Station");
@@ -5113,8 +5131,6 @@ void setup(){
     resetRGB(); 
     RGBBLUE = true; colorposession = 1;   
     rgbBlink();
-     
-    
   }
   if (Function == 52) {
     Serial.println("BRX Yellow Respawn Station");
@@ -5127,8 +5143,6 @@ void setup(){
     resetRGB(); 
     RGBYELLOW = true; colorposession = 2;   
     rgbBlink();
-     
-    
   }
   if (Function == 53) {
     Serial.println("BRX gREEN Respawn Station");
@@ -5141,8 +5155,6 @@ void setup(){
     resetRGB(); 
     RGBGREEN = true; colorposession = 3;   
     rgbBlink();
-     
-    
   }
   if (Function == 15) {
     Serial.println("Test Listen LoRa");
