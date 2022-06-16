@@ -21,24 +21,19 @@
 #include <Adafruit_GFX.h> // needed for oled display
 #include <Adafruit_SSD1306.h> // needed for oled display
 
-// change based upon board version
-int IRledPin =  21;    // LED connected to GPIO26, pin 21 for v5+ and pin 26 for v4 and earlier
-// serial definitions for LoRa
-#define SERIAL1_RXPIN 22 // TO LORA TX - 22 for v5 and 19 for 4-
-#define SERIAL1_TXPIN 23 // TO LORA RX 23 all versions
-const int motionSensor = 34;
-#define DATAPIN    14 // DI/O for v4 boards it is 25, v5 is 14
-#define CLOCKPIN   27 // CI/O
-// dotstar definitions
-#define NUMPIXELS 21 // Number of LEDs in strip
-byte colorposession = 7;
-Adafruit_DotStar strip(NUMPIXELS, DATAPIN, CLOCKPIN, DOTSTAR_BRG);
-// Runs 10 LEDs at a time along strip, change by increasing the tail negative value
-// This requires about 200 mA for all the 'on' pixels + 1 mA per 'off' pixel.
-int      head  = 0, tail = -7; // Index of first 'on' and 'off' pixels
-uint32_t color = 0xFF0000;      // 'On' color (starts red)
-const byte IR_Sensor_Pin = 32; // this is int input pin for ir receiver, use pin 32 for v5 plus and 16 for v4 and earlier
+// GPIO DEFINITIONS
 
+const int motionSensor = 34; // SPECIAL BUILDS ONLY
+// serial definitions for LoRa
+#define SERIAL1_RXPIN 22 // TO LORA TX
+#define SERIAL1_TXPIN 23 // TO LORA RX
+#define DATAPIN    14 // DI/O LED STRIP
+#define CLOCKPIN   27 // CI/O LED STRIP
+const byte IR_Sensor_Pin = 32; // this is int input pin for ir receiver, use pin 32 for v5 plus and 16 for v4 and earlier
+int IRledPin =  21;    // LED connected to GPIO26 V4-, pin 21 for v5+
+int red = 33; // v4- = pin 17, v5+ = pin 33
+int green = 25; // v4- = pin 21, v5+ = pin 25
+int blue = 26; // v4- = pin 22, v5+ = pin 26
 
 
 // Set GPIOs for LED and PIR Motion Sensor
@@ -53,15 +48,25 @@ long PreviousCore1Check = 0;
 // define the number of bytes I'm using/accessing for eeprom
 #define EEPROM_SIZE 102
 
+
+// dotstar definitions
+#define NUMPIXELS 11 // Number of LEDs in strip
+byte colorposession = 7;
+Adafruit_DotStar strip(NUMPIXELS, DATAPIN, CLOCKPIN, DOTSTAR_BRG);
+// Runs 10 LEDs at a time along strip, change by increasing the tail negative value
+// This requires about 200 mA for all the 'on' pixels + 1 mA per 'off' pixel.
+int      head  = 0, tail = -5; // Index of first 'on' and 'off' pixels
+uint32_t color = 0xFF0000;      // 'On' color (starts red)
+
+
 //*************************************************************************
 //******************** OTA UPDATES ****************************************
 //*************************************************************************
 String FirmwareVer = {"5.0"};
 #define URL_fw_Version "https://raw.githubusercontent.com/LaserTagMods/autoupdate/main/jtowerversion.txt"
 #define URL_fw_Bin "https://raw.githubusercontent.com/LaserTagMods/autoupdate/main/JTOWER.bin"
-
-//#define URL_fw_Version "http://cade-make.000webhostapp.com/version.txt"
-//#define URL_fw_Bin "http://cade-make.000webhostapp.com/firmware.bin"
+//#define URL_fw_Version "https://raw.githubusercontent.com/LaserTagMods/autoupdate/main/jboxv3version.txt"
+//#define URL_fw_Bin "https://raw.githubusercontent.com/LaserTagMods/autoupdate/main/JBOXV3.bin"
 
 bool OTAMODE = false;
 
@@ -149,10 +154,10 @@ int ESPNOWPreviousMillis = 0;
 //*********************** LORA VARIABLE DELCARATIONS **********************
 //*************************************************************************
 String LoRaDataReceived; // string used to record data coming in
-String tokenStrings[8]; // used to break out the incoming data for checks/balances
+String tokenStrings[5]; // used to break out the incoming data for checks/balances
 String LoRaDataToSend; // used to store data being sent from this device
 
-bool LORALISTEN = true; // a trigger used to enable the radio in (listening)
+bool LORALISTEN = false; // a trigger used to enable the radio in (listening)
 bool ENABLELORATRANSMIT = false; // a trigger used to enable transmitting data
 
 int sendcounter = 0;
@@ -193,8 +198,6 @@ bool ENABLEIRRECEIVER = true; // enables and disables the ir receiver
 //*************************************************************************
 // variables for gameplay and scoring:
 int Function = 99; // set as default for basic domination game mode
-int LastFunction = 0; // used to go back to function to execute an order (66)
-bool ORDER66 = false; // for killing all players
 int TeamScore[4]; // used to track team score
 int PlayerScore[64]; // used to track individual player score
 int JboxPlayerID[21]; // used for incoming jbox ids for players with posessions
@@ -217,8 +220,6 @@ bool MULTIBASEDOMINATION = false;
 bool BASICDOMINATION = false; // a default game mode
 bool CAPTURETHEFLAGMODE = false;
 bool DOMINATIONCLOCK = false;
-byte TempDomTagCounter = 0;
-bool GasEm = false;
 bool POSTDOMINATIONSCORETOBLYNK = false;
 bool CAPTURABLEEMITTER = false;
 bool ANYTEAM = false;
@@ -260,6 +261,7 @@ bool SWAPBRX = false;
 bool OWNTHEZONE = false;
 bool HITTAG = false;
 bool CAPTURETHEFLAG = false;
+bool GASGRENADE = false;
 bool LIGHTDAMAGE = false;
 bool MEDIUMDAMAGE = false;
 bool HEAVYDAMAGE = false;
@@ -284,9 +286,6 @@ unsigned long core1previousMillis = 0;
 const long core1interval = 3000;
 
 //  RGB VARIABLE DELCARATIONS
-int red = 33; // v4- = pin 17, v5+ = pin 33
-int green = 25; // v4- = pin 21, v5+ = pin 25
-int blue = 26; // v4- = pin 22, v5+ = pin 26
 int RGBState = LOW;  // RGBState used to set the LED
 bool RGBGREEN = false;
 bool RGBOFF = false;
@@ -309,7 +308,7 @@ const int buzzer = 5; // buzzer pin, 5 for all versions
 bool BUZZ = false; // set to true to send buzzer sound
 bool LONGBUZZ = false; // set to true to sound buzzer
 unsigned long buzzerpreviousMillis = 0;
-byte BuzzerCounter = 5;
+byte BuzzerCounter = 10;
 
 void StartShortBuzzer() {
   BUZZ = true; // activate buzzer/horn
@@ -329,7 +328,7 @@ void EndLongBuzzer() {
   if (BuzzerCounter < 1) {
     LONGBUZZ = false;
     digitalWrite(buzzer, LOW);
-    BuzzerCounter = 5;
+    BuzzerCounter = 10;
   } else {
     digitalWrite(buzzer, LOW);
     delay(1000);
@@ -351,135 +350,112 @@ int LTTODamage = 1;
 // ESP Now Objects:
 //*****************************************************************************************
 // for resetting mac address to custom address:
-uint8_t newMACAddress[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0xff}; 
+uint8_t newMACAddress[] = {0x32, 0xAE, 0xA4, 0x07, 0x0D, 0x09}; 
 
 // REPLACE WITH THE MAC Address of your receiver, this is the address we will be sending to
 uint8_t broadcastAddress[] = {0x32, 0xAE, 0xA4, 0x07, 0x0D, 0x09};
 
 
-// data to process espnow data
-String TokenStrings[20];
+// Register peer
+esp_now_peer_info_t peerInfo;
 
-long previngamemillis = 0;
-
-// Game Settings - Config:
-byte SettingsGameMode = 0; // default is team battle, 1 is royale
-byte SettingsLives = 0; // default low, 1 is high
-byte SettingsLighting = 0; // High is default, 1 is low
-byte SettingsGameTime = 0; // off is default, 1 is on
-byte SettingsRespawn = 0; // auto is default, 1 is manual
-byte ObjectiveMode = 0;
-
-String SendStartBeacon = "null";
-String ConfirmBeacon = "null";
+// Define variables to store and to be sent
+int datapacket1 = 99; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
+int datapacket2 = 32700; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
+int datapacket3 = JBOXID; // From - device ID
+String datapacket4 = "null"; // used for score reporting only
 
 
-bool INGAME = false;
+// Define variables to store incoming readings
+int incomingData1; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases
+int incomingData2; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
+int incomingData3; // From - device ID
+String incomingData4; // used for score reporting only
 
-void formatMacAddress(const uint8_t *macAddr, char *buffer, int maxLength)
-// Formats MAC Address
-{
-  snprintf(buffer, maxLength, "%02x:%02x:%02x:%02x:%02x:%02x", macAddr[0], macAddr[1], macAddr[2], macAddr[3], macAddr[4], macAddr[5]);
-}
+// Variable to store if sending data was successful
+String success;
 
-void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
-// Called when data is received
-{
-  // Only allow a maximum of 250 characters in the message + a null terminating byte
-  char buffer[ESP_NOW_MAX_DATA_LEN + 1];
-  int msgLen = min(ESP_NOW_MAX_DATA_LEN, dataLen);
-  strncpy(buffer, (const char *)data, msgLen);
- 
-  // Make sure we are null terminated
-  buffer[msgLen] = 0;
- 
-  // Format the MAC address
-  char macStr[18];
-  formatMacAddress(macAddr, macStr, 18);
- 
-  // Send Debug log message to the serial port
-  Serial.printf("Received message from: %s - %s\n", macStr, buffer);
-  
-  // store and separate the buffer
-  String IncomingData = String(buffer);
-  char *ptr = strtok((char*)IncomingData.c_str(), ","); // looks for commas as breaks to split up the string
-  int index = 0;
-  while (ptr != NULL)
-  {
-    TokenStrings[index] = ptr; // saves the individual characters divided by commas as individual strings
-    index++;
-    ptr = strtok(NULL, ",");  // takes a list of delimiters
-  }
-  Serial.println("We have found " + String(index ) + " tokens");
-  int stringnumber = 0;
-  while (stringnumber < index) {
-    Serial.print("Token " + String(stringnumber) + ": ");
-    Serial.println(TokenStrings[stringnumber]);
-    stringnumber++;
-  }
-  if (TokenStrings[1] == "69") {
-    Serial.println("Received a game over winner Announcement");
-    Serial.println("reset scores button pressed");
-    Serial.println("All scores reset");
-    ResetScores();
-    rgbBlink();
-    colorposession = 7;
-  }
-}
- 
-void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
-// Called when data is sent
-{
-  char macStr[18];
-  formatMacAddress(macAddr, macStr, 18);
-  Serial.print("Last Packet Sent to: ");
-  Serial.println(macStr);
-  Serial.print("Last Packet Send Status: ");
+//Structure example to send data
+//Must match the receiver structure
+typedef struct struct_message {
+    int DP1; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
+    int DP2; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
+    int DP3; // From - device ID
+    char DP4[200]; // used for score reporting
+} struct_message;
+
+// Create a struct_message called DataToBroadcast to hold sensor readings
+struct_message DataToBroadcast;
+
+// Create a struct_message to hold incoming sensor readings
+struct_message incomingReadings;
+
+// trigger for activating data broadcast
+bool BROADCASTESPNOW = false; 
+
+// Callback when data is sent
+void OnDataSent(const uint8_t *mac_addr, esp_now_send_status_t status) {
+  Serial.print("\r\nLast Packet Send Status:\t");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
+  if (status ==0){
+    success = "Delivery Success :)";
+  }
+  else{
+    success = "Delivery Fail :(";
+  }
 }
- 
-void broadcast(const String &message)
-// Emulates a broadcast
-{
-  // Broadcast a message to every device in range
-  uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
-  esp_now_peer_info_t peerInfo = {};
-  memcpy(&peerInfo.peer_addr, broadcastAddress, 6);
-  if (!esp_now_is_peer_exist(broadcastAddress))
-  {
-    esp_now_add_peer(&peerInfo);
+// Callback when data is received
+void OnDataRecv(const uint8_t * mac, const uint8_t *incomingData, int len) {
+  memcpy(&incomingReadings, incomingData, sizeof(incomingReadings));
+  //digitalWrite(2, HIGH);
+  Serial.print("Bytes received: ");
+  Serial.println(len);
+  incomingData1 = incomingReadings.DP1; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
+  incomingData2 = incomingReadings.DP2; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
+  incomingData3 = incomingReadings.DP3; // From
+  //incomingData4 = incomingReadings.DP4; // From
+  Serial.println("DP1: " + String(incomingData1)); // INTENDED RECIPIENT
+  Serial.println("DP2: " + String(incomingData2)); // FUNCTION/COMMAN
+  Serial.println("DP3: " + String(incomingData3)); // From - device ID
+  Serial.print("DP4: "); // used for scoring
+  //Serial.println(incomingData4);
+  Serial.write(incomingReadings.DP4);
+  Serial.println();
+  incomingData4 = String(incomingReadings.DP4);
+  Serial.println(incomingData4);
+  ProcessIncomingCommands();
+  //Serial.print("cOMMS loop running on core ");
+  //Serial.println(xPortGetCoreID());
+}
+
+// object to generate random numbers to send
+void getReadings(){
+  // Set values to send
+  DataToBroadcast.DP1 = datapacket1;
+  DataToBroadcast.DP2 = datapacket2;
+  DataToBroadcast.DP3 = datapacket3;
+  datapacket4.toCharArray(DataToBroadcast.DP4, 200);
+  Serial.println(datapacket1);
+  Serial.println(datapacket2);
+  Serial.println(datapacket3);
+  Serial.println(datapacket4);
+}
+
+void ResetReadings() {
+  //datapacket1 = 99; // INTENDED RECIPIENT - 99 is all - 0-63 for player id - 100-199 for bases - 200 - 203 for teams 0-3
+  datapacket2 = 32700; // FUNCTION/COMMAND - range from 0 to 32,767 - 327 different settings - 99 different options
+  datapacket3 = JBOXID; // From - device ID
+  datapacket4 = "null";
+}
+
+// object for broadcasting the data packets
+void BroadcastData() {
+  esp_err_t result = esp_now_send(broadcastAddress, (uint8_t *) &DataToBroadcast, sizeof(DataToBroadcast));
+  if (result == ESP_OK) {
+    Serial.println("Sent with success");
   }
-  // Send message
-  esp_err_t result = esp_now_send(broadcastAddress, (const uint8_t *)message.c_str(), message.length());
- 
-  // Print results to serial monitor
-  if (result == ESP_OK)
-  {
-    Serial.println("Broadcast message success");
-  }
-  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
-  {
-    Serial.println("ESP-NOW not Init.");
-  }
-  else if (result == ESP_ERR_ESPNOW_ARG)
-  {
-    Serial.println("Invalid Argument");
-  }
-  else if (result == ESP_ERR_ESPNOW_INTERNAL)
-  {
-    Serial.println("Internal Error");
-  }
-  else if (result == ESP_ERR_ESPNOW_NO_MEM)
-  {
-    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
-  }
-  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
-  {
-    Serial.println("Peer not found.");
-  }
-  else
-  {
-    Serial.println("Unknown error");
+  else {
+    Serial.println("Error sending the data");
   }
 }
 
@@ -497,22 +473,37 @@ void ChangeMACaddress() {
 }
 
 void IntializeESPNOW() {
+    // Set up the onboard LED
+  pinMode(2, OUTPUT);
+  
   // run the object for changing the esp default mac address
   ChangeMACaddress();
   
-  // Initialize ESP-NOW
-  if (esp_now_init() == ESP_OK)
-  {
-    Serial.println("ESP-NOW Init Success");
-    esp_now_register_recv_cb(receiveCallback);
-    esp_now_register_send_cb(sentCallback);
+  // Set device as a Wi-Fi Station
+  //WiFi.mode(WIFI_STA);
+  
+  // Init ESP-NOW
+  if (esp_now_init() != ESP_OK) {
+    Serial.println("Error initializing ESP-NOW");
+    return;
   }
-  else
-  {
-    Serial.println("ESP-NOW Init Failed");
-    delay(3000);
-    ESP.restart();
+  
+  // Once ESPNow is successfully Init, we will register for Send CB to
+  // get the status of Trasnmitted packet
+  esp_now_register_send_cb(OnDataSent);  
+  
+  memcpy(peerInfo.peer_addr, broadcastAddress, 6);
+  peerInfo.channel = 0;   // this is the channel being used
+  peerInfo.encrypt = false;
+  
+  // Add peer        
+  if (esp_now_add_peer(&peerInfo) != ESP_OK){
+    Serial.println("Failed to add peer");
+    return;
   }
+  
+  // Register for a callback function that will be called when data is received
+  esp_now_register_recv_cb(OnDataRecv);
 }
 
 // **************************************************
@@ -526,12 +517,12 @@ void SetupDotStars() {
   strip.begin(); // Initialize pins for output
   strip.show();  // Turn all LEDs off ASAP
 }
-bool RUNTHESNAKE = true;
+bool RUNTHESNAKE = false;
 long SnakeMillis = 0;
 void RunLEDSnake() {
   //***************************************************************************************
-  if (currentMillis0 - SnakeMillis > 20) {
-    SnakeMillis = currentMillis0;  
+  if (currentMillis1 - SnakeMillis > 20) {
+    SnakeMillis = currentMillis1;  
   strip.setPixelColor(head, color); // 'On' pixel at head
   strip.setPixelColor(tail, 0);     // 'Off' pixel at tail
   strip.show();                     // Refresh strip
@@ -543,14 +534,14 @@ void RunLEDSnake() {
     //} else {
       //colorposession++;
     //}
-    if (colorposession == 0) { color = 0x00FF00;} // color set to red
-    if (colorposession == 1) { color = 0x0000FF;} // color set to blue
-    if (colorposession == 2) { color = 0xFFFF00;} // color set to yellow
-    if (colorposession == 3) { color = 0xFF0000;} // color set to green
-    if (colorposession == 4) { color = 0xFFFFFF;} // color set to white
-    if (colorposession == 5) { color = 0x000FFFF;} // color set to Magenta
-    if (colorposession == 6) { color = 0xFF00FF;} // color set to Cyan
-    if (colorposession == 7) { color = 0x0000000;} // color set to off
+    if (colorposession == 0) { color = 0x00FF00; Serial.println("Red");} // color set to red
+    if (colorposession == 1) { color = 0x0000FF; Serial.println("blue");} // color set to blue
+    if (colorposession == 2) { color = 0xFFFF00; Serial.println("yellow");} // color set to yellow
+    if (colorposession == 3) { color = 0xFF0000; Serial.println("green");} // color set to green
+    if (colorposession == 4) { color = 0xFFFFFF; Serial.println("white");} // color set to white
+    if (colorposession == 5) { color = 0x000FFFF; Serial.println("magenta");} // color set to Magenta
+    if (colorposession == 6) { color = 0xFF00FF; Serial.println("cyan");} // color set to Cyan
+    if (colorposession == 7) { color = 0x0000000; Serial.println("Off");} // color set to Magenta
     //if((color >>= 8) == 0)          //  Next color (G->R->B) ... past blue now?
       //color = 0xFF0000;             //   Yes, reset to red
   }
@@ -732,7 +723,7 @@ const char index_html[] PROGMEM = R"rawliteral(
 </head>
 <body>
   <div class="topnav">
-    <h1>JTOWER 5.2</h1>
+    <h1>JBOX V4.2 Settings</h1>
   </div>
   <div class="content">
     <div class="card">
@@ -747,6 +738,7 @@ const char index_html[] PROGMEM = R"rawliteral(
       </p>
       <h2>Primary Function</h2>
       <p><select name="primary" id="primaryid">
+        <option value="X">All System Objective Modes:</option>
         <option value="0">Basic Domination</option>
         <option value="1">5 Minute Domination</option>
         <option value="2">10 Minute Domination</option>
@@ -754,27 +746,22 @@ const char index_html[] PROGMEM = R"rawliteral(
         <option value="0a">Domination Node - ESPNOW</option>
         <option value="0b">Domination Master</option>
         <option value="3">Shots Accumulator</option>
-        <option value="4a">Evolver Capture The Flag - Red</option>
-        <option value="4b">Evolver Capture The Flag - Blue</option>
-        <option value="4c">Evolver Capture The Flag - Yellow</option>
-        <option value="4d">Evolver Capture The Flag - Green</option>
+        <option value="3r">Red Assault</option>
+        <option value="3b">Blue Assault</option>
+        <option value="3y">Yellow Assault</option>
+        <option value="3g">Green Assault</option>
+        <option value="9">Capturable Respawn Station</option>
+        <option value="X">Evolver Specific:</option>
         <option value="4e">Evolver Respawn - Cover Station</option>
         <option value="4f">Evolver Own The Zone</option>
         <option value="4g">Evolver Medic - BRoyale Checkpoint</option>
         <option value="4h">Evolver Upgrade Station</option>
-        <option value="16">Evolver IR Test Mode</option>
-        <option value="11">Own The Zone</option>
+        <option value="X">BRX Specific:</option>
         <option value="5a">BRX Respawn Station - Red</option>
         <option value="5b">BRX Respawn Station - Blue</option>
         <option value="5d">BRX Respawn Station - Green</option>
         <option value="5c">BRX Respawn Station - Yellow</option>
-        <option value="9">Capturable Respawn Station</option>
-        <option value="10">Loot Box</option>
-        <option value="11">Own The Zone</option>
-        <option value="12">Gas Drone - 5 Minute</option>
-        <option value="13">BRX Heavy Damage</option>
-        <option value="14">BRX Boost Box</option>
-        <option value="5e">BRP Respawn Station - All</option>
+        <option value="14">BRX Stat Boost Box</option>
         </select>
       </p>
       <h2>Motion Activation</h2>
@@ -785,8 +772,6 @@ const char index_html[] PROGMEM = R"rawliteral(
         </select>
       </p>
       <p><button id="resetscores" class="button">Reset Domination Scores</button></p>
-      <p><button id="killplayers" class="button">End Game For ALl</button></p>
-      <p><button id="playball" class="button">Start New Game</button></p>
     </div>
   </div>
   <div class="stopnav">
@@ -830,7 +815,7 @@ const char index_html[] PROGMEM = R"rawliteral(
   </div>
   <div class="content">
     <div class="card">
-    <p><button id="loratest" class="button">Test Lora</button></p>
+    <p><button id="otaupdate" class="button">OTA Firmware Refresh</button></p>
     <h2>Device ID Assignment</h2>
       <p><select name="devicename" id="devicenameid">
         <option value="965">Select JBOX ID</option>
@@ -865,7 +850,6 @@ const char index_html[] PROGMEM = R"rawliteral(
         wifi pass: <input type="text" name="input2">
         <input type="submit" value="Submit">
       </form><br>
-      <p><button id="otaupdate" class="button">OTA Firmware Refresh</button></p>
     </div>
   </div>
   
@@ -935,9 +919,6 @@ if (!!window.EventSource) {
     document.getElementById('motionid').addEventListener('change', handlemotion, false);
     document.getElementById('resetscores').addEventListener('click', toggle14s);
     document.getElementById('otaupdate').addEventListener('click', toggle14o);
-    document.getElementById('loratest').addEventListener('click', toggle14c);
-    document.getElementById('killplayers').addEventListener('click', toggle14a);
-    document.getElementById('playball').addEventListener('click', toggle14b);
     document.getElementById('devicenameid').addEventListener('change', handledevicename, false);
     
   }
@@ -946,15 +927,6 @@ if (!!window.EventSource) {
   }
   function toggle14o(){
     websocket.send('toggle14o');
-  }
-  function toggle14a(){
-    websocket.send('toggle14a');
-  }
-  function toggle14b(){
-    websocket.send('toggle14b');
-  }
-  function toggle14c(){
-    websocket.send('toggle14c');
   }
   function handlegear() {
     var xb = document.getElementById("GearID").value;
@@ -993,43 +965,17 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
     if (strcmp((char*)data, "toggle14s") == 0) { // game reset
       Serial.println("reset scores button pressed");
       Serial.println("All scores reset");
+      datapacket1 = 199;
+      datapacket2 = 10401;
+      BROADCASTESPNOW = true;
       ResetScores();
       rgbBlink();
-      colorposession = 7;
       // need to send a command to stop and reset other domination boxes as well
-    }
-    if (strcmp((char*)data, "toggle14b") == 0) { // 
-      Serial.println("Return to normal functions");
-      // reset esp
-      Serial.println("Sent Data Via ESPNOW");
-      ORDER66 = false;
-      LoRaDataToSend = "ENDORDER66";
-      TransmitLoRa();
-      ESP.restart();      
-    }
-    if (strcmp((char*)data, "toggle14c") == 0) { // 
-      Serial.println("Test Lora");
-      LoRaDataToSend = "TEST";
-      ResetScores();
-      EEPROM.write(1, Function);
-      EEPROM.commit();
-      Serial.println("Test Listen LoRa");
-      rgbBlink();
-      LORALISTEN = true;
-      ShowGameMode();
-      if (colorposession == 7) {
-        colorposession = 0;
-      } else {
-        colorposession++;
-      }
-      TransmitLoRa();     
     }
     if (strcmp((char*)data, "toggle14o") == 0) { // update firmware
       Serial.println("OTA Update Mode");
-      rgbBlink();
       EEPROM.write(0, 1); // reset OTA attempts counter
       EEPROM.commit(); // Store in Flash
-      // have other boxes in proximity update as well:
       delay(2000);
       ESP.restart();
       //INITIALIZEOTA = true;
@@ -1041,41 +987,41 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Basic Domination");
       rgbBlink();
-       
-      colorposession = 7;
+      LORALISTEN = false;
+      RUNTHESNAKE = false;
       ShowGameMode();
     }
     if (strcmp((char*)data, "0c") == 0) {
-      Function = 4;
+      Function = 100;
       ResetScores();
       EEPROM.write(1, Function);
       EEPROM.commit();
       Serial.println("Domination Node - LoRa");
       rgbBlink();
       LORALISTEN = true;
-      colorposession = 7;
+      RUNTHESNAKE = false;
       ShowGameMode();
     }
     if (strcmp((char*)data, "0a") == 0) {
-      Function = 5;
+      Function = 101;
       ResetScores();
       EEPROM.write(1, Function);
       EEPROM.commit();
       Serial.println("Domination Node - ESPNOW");
       rgbBlink();
-       
-      colorposession = 7;
+      LORALISTEN = false;
+      RUNTHESNAKE = false;
       ShowGameMode();
     }
     if (strcmp((char*)data, "0b") == 0) {
-      Function = 6;
+      Function = 102;
       ResetScores();
       EEPROM.write(1, Function);
       EEPROM.commit();
       Serial.println("Domination Master");
       rgbBlink();
       LORALISTEN = true;
-      colorposession = 7;
+      RUNTHESNAKE = false;
       ShowGameMode();
     }
     if (strcmp((char*)data, "1") == 0) {
@@ -1085,8 +1031,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("5 Minute Basic Domination");
       rgbBlink();
-       
-      colorposession = 7;
+      LORALISTEN = false;
+      RUNTHESNAKE = false;
       ShowGameMode();
     }
     if (strcmp((char*)data, "2") == 0) {
@@ -1096,8 +1042,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("10 Minute Basic Domination");
       rgbBlink();
-       
-      colorposession = 7;
+      LORALISTEN = false;
+      RUNTHESNAKE = false;
       ShowGameMode();
     }
     if (strcmp((char*)data, "3") == 0) {
@@ -1107,7 +1053,56 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Shot Accumulator Mode");
       rgbBlink();
-      colorposession = 7;
+      LORALISTEN = false;
+      RUNTHESNAKE = false;
+      ShowGameMode();
+    }
+    if (strcmp((char*)data, "3r") == 0) {
+      Function = 300;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Red Assault - 1");
+      rgbBlink();
+      colorposession = 0;
+      LORALISTEN = true;
+      RUNTHESNAKE = true;
+      ShowGameMode();
+    }
+    if (strcmp((char*)data, "3b") == 0) {
+      Function = 301;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Blue Assault - 1");
+      rgbBlink();
+      colorposession = 1;
+      LORALISTEN = true;
+      RUNTHESNAKE = true;
+      ShowGameMode();
+    }
+    if (strcmp((char*)data, "3y") == 0) {
+      Function = 302;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Yellow Assault - 1");
+      rgbBlink();
+      colorposession = 2;
+      LORALISTEN = true;
+      RUNTHESNAKE = true;
+      ShowGameMode();
+    }
+    if (strcmp((char*)data, "3g") == 0) {
+      Function = 303;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Green Assault - 1");
+      rgbBlink();
+      colorposession = 3;
+      LORALISTEN = true;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "4a") == 0) {
@@ -1123,7 +1118,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBRED = true; colorposession = 0;
       rgbBlink();
-       
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "4b") == 0) {
@@ -1139,8 +1135,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBBLUE = true; colorposession = 1;
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "4c") == 0) {
@@ -1156,8 +1152,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBYELLOW = true; colorposession = 2;
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "4d") == 0) {
@@ -1173,8 +1169,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBGREEN = true; colorposession = 3;   
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "4e") == 0) {
@@ -1189,8 +1185,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBWHITE = true; colorposession = 4;   
       rgbBlink();
-       
-      
+      LORALISTEN = true;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "4f") == 0) {
@@ -1205,8 +1201,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBPURPLE = true; colorposession = 5;   
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "4g") == 0) {
@@ -1221,8 +1217,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBCYAN = true; colorposession = 6;   
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "4h") == 0) {
@@ -1237,8 +1233,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBYELLOW = true; colorposession = 2;   
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "5a") == 0) {
@@ -1256,8 +1252,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBRED = true; colorposession = 0;   
       rgbBlink();
-       
-      
+      LORALISTEN = true;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "5b") == 0) {
@@ -1275,8 +1271,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBBLUE = true; colorposession = 1;   
       rgbBlink();
-       
-      
+      LORALISTEN = true;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "5c") == 0) {
@@ -1294,8 +1290,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBYELLOW = true; colorposession = 2;   
       rgbBlink();
-       
-      
+      LORALISTEN = true;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "5d") == 0) {
@@ -1313,8 +1309,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBGREEN = true; colorposession = 3;   
       rgbBlink();
-       
-      
+      LORALISTEN = true;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "5e") == 0) {
@@ -1332,8 +1328,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBWHITE = true; colorposession = 4;   
       rgbBlink();
-       
-      
+      LORALISTEN = true;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "6") == 0) {
@@ -1343,19 +1339,19 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Respawn Station Blue ");
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "7") == 0) {
-      Function = 8;
+      Function = 7;
       ResetScores();
       EEPROM.write(1, Function);
       EEPROM.commit();
       Serial.println("Respawn Station Green ");
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "8") == 0) {
@@ -1365,8 +1361,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Respawn Station Yellow");
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "9") == 0) {
@@ -1376,8 +1372,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Capturable Respawn Station");
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "10") == 0) {
@@ -1387,8 +1383,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Own The Zone");
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "11") == 0) {
@@ -1398,8 +1394,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Gas Drone");
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "12") == 0) {
@@ -1409,8 +1405,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Gas Drone - 5 minutes");
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "13") == 0) {
@@ -1428,8 +1424,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBCYAN = true; colorposession = 6;   
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "14") == 0) {
@@ -1447,8 +1443,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBPURPLE = true; colorposession = 5;   
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "15") == 0) {
@@ -1474,8 +1470,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBRED = true; colorposession = 0;
       rgbBlink();
-       
-      
+      LORALISTEN = false;
+      RUNTHESNAKE = true;
       ShowGameMode();
     }
     if (strcmp((char*)data, "100") == 0) {
@@ -1719,6 +1715,48 @@ String processor(const String& var){
     }
   }
 }
+void ProcessIncomingCommands() { 
+  // need a command that resets scores ****
+  if (incomingData1 == JBOXID || incomingData1 == 199) { // data checked out to be intended for this JBOX or for all JBOXes
+    if (incomingData2 > 9999 && incomingData2 < 10400) {
+      // received a posession update from another JBOX, via espnow
+      // check that we need to process it:
+      if (Function == 102) {
+        int incomingplayerid = 0;
+        int incomingteamid = 0;
+        int tempvalue = incomingData2 - 10000;
+        if (tempvalue > 299) {
+          incomingteamid = 3;
+          incomingplayerid = tempvalue - 300;
+        } else {
+          if (tempvalue > 199) {
+            incomingteamid = 2;
+          incomingplayerid = tempvalue - 200;
+          } else {
+            if (tempvalue > 99) {
+              incomingteamid = 1;
+              incomingplayerid = tempvalue - 100;
+            } else {
+              incomingteamid = 0;
+              incomingplayerid = tempvalue;
+            }
+          }
+          int incomingjboxid = incomingData3 - 100;
+          JboxPlayerID[incomingjboxid] = incomingplayerid;
+          JboxTeamID[incomingjboxid] = incomingteamid;
+          JboxInPlay[incomingjboxid] = 1;
+          MULTIBASEDOMINATION = true;
+        }
+      }
+    }
+    if (incomingData2 == 10401) {
+      ResetScores();
+    }
+  }
+  digitalWrite(2, LOW);
+}
+
+
 //*************************************************************************
 //*************************** RGB OBJECTS *********************************
 //*************************************************************************
@@ -2124,42 +2162,32 @@ void IDCritical() {
 }
 void BasicDomination() {
   RGBDEMOMODE = false;
+  // boost stats
+  BulletType = 3;
+  Damage = 10;
+  Team = TeamID; 
+  Player = 0;
+  Critical = 0;
+  Power = 1;
+  SetIRProtocol();
+  delay(250);
+  // boost health
+  BulletType = 1;
+  Damage = 40;
+  Critical = 0;
+  Power = 0;
+  SetIRProtocol();
+  delay(250);
+  // control point captured
+  BulletType = 15;
+  Damage = 10;
+  SetIRProtocol();
   StartShortBuzzer();
   AlignRGBWithTeam();
-  if (GearMod == 0) {
-    CONTROLPOINTCAPTURED = true;
-  }
   if (!DOMINATIONCLOCK) {
     DOMINATIONCLOCK = true;
-    Serial.println("enabled domination clock/counter");
   }
-}
-void ChangeBaseAlignment() {
-  if (TeamID != Team) { // checks to see if tag hitting base is unfriendly or friendly
-    CapturableEmitterScore[TeamID]++; // add one point to the team that shot the base
-    if (CapturableEmitterScore[TeamID] >= RequiredCapturableEmitterCounter) { // check if the team scored enough points/shots to capture base
-      Team = TeamID; // sets the ir protocol used for the respawn ir tag
-      // resetting all team capture points
-      CapturableEmitterScore[0] = 0;
-      CapturableEmitterScore[1] = 0;
-      CapturableEmitterScore[2] = 0;
-      CapturableEmitterScore[3] = 0;
-      AlignRGBWithTeam(); // sets team RGB to new friendly team
-      BASECONTINUOUSIRPULSE = true;
-      ResetAllIRProtocols();
-      SINGLEIRPULSE = true; // allows for a one time pulse of an IR
-      CONTROLPOINTCAPTURED = true;
-      BUZZ = true;
-    } else { // if team tagging base did not meet minimum to control base
-      int tempscore = CapturableEmitterScore[TeamID]; // temporarily stores the teams score that just shot the base
-      // resets all scores
-      CapturableEmitterScore[0] = 0;
-      CapturableEmitterScore[1] = 0;
-      CapturableEmitterScore[2] = 0;
-      CapturableEmitterScore[3] = 0;
-      CapturableEmitterScore[TeamID] = tempscore; // resaves the temporarily stored score over the team's score that just shot the base, just easier than a bunch of if statements
-    }
-  }
+  Serial.println("enabled domination clock/counter");
 }
 // This procedure uses the preset IR_Sensor_Pin to determine if an ir received is BRX, if so it records the protocol received
 void receiveBRXir() {
@@ -2479,42 +2507,6 @@ void pulseIR(long microsecs) {
   }
   sei();  // this turns them back on
 }
-void ExecuteOrder66() {
-  if (GearMod == 0) { // BRX
-    Player = 64;
-    BulletType = 10;
-    Team = 2;
-    Damage = 200;
-    Critical = 0;
-    Power = 0;  
-    SetIRProtocol();
-  }
-  if (GearMod == 1) { // Evolver
-    Player = 15;
-    BulletType = 0;
-    Team = 2;
-    Damage = 200;
-    Critical = 1;
-    SetEvolverIRProtocol();
-  }
-  if (GearMod == 2) { // LTTO
-    
-  }
-  if (GearMod == 3) { //BRP
-    Player = 1;
-    BulletType = 0;
-    Team = 4;
-    Damage = 200;
-    Critical = 0;
-    SetBRPIRProtocol();
-  }
-  if (GearMod == 4) { // Laserwar
-    
-  }
-}
-void SendLTTOIR() {
-  
-}
 void SendBRPIR() {
   Serial.println("Sending IR signal");
   pulseIR(2000); // sync
@@ -2702,7 +2694,10 @@ void LightDamage() { // not set properly yet
   SetIRProtocol();
 }
 void SwapBRX() {
-  
+  datapacket1 = PlayerID;
+  datapacket2 = 31000;
+  datapacket3 = 99;
+  BROADCASTESPNOW = true;
 }
 void ControlPointLost() {
   BulletType = 15;
@@ -2732,17 +2727,11 @@ void ControlPointCaptured() {
   Power = 0;
   SetIRProtocol();
 }
-void GasPlayers() {
-  BulletType = 11;
-  Player = 64;
-  Team = TeamID;
-  Damage = 1;
-  Critical = 0;
-  Power = 1;
-  SetIRProtocol();
-}
 void OwnTheZone() {
-  
+  datapacket1 = 99;
+  datapacket2 = 31100;
+  datapacket3 = Team;
+  BROADCASTESPNOW = true;
 }
 void SetBRPIRProtocol() {
 // Set Player ID
@@ -4219,7 +4208,6 @@ void ReceiveTransmission() {
         index++;
         ptr = strtok(NULL, ",");  // takes a list of delimiters
         }
-        rgbBlink();
         // the data is now stored into individual strings under tokenStrings[]
         // print out the individual string arrays separately
         Serial.println("received LoRa communication");
@@ -4243,16 +4231,38 @@ void ReceiveTransmission() {
         Serial.println(tokenStrings[8]);
         Serial.print("Token 9: ");
         Serial.println(tokenStrings[9]);
+        if (tokenStrings[2] = "CAPTURE") {
+          // THIS IS FROM A NODE DOMINATION BASE THAT HAS BEEN CAPTURED
+          // check game mode:
+          if (Function == 102) {
+            // This base is a master, time to process the data package
+            // token 3 is the base id, token 4 is the team id, token 5 is the player id
+            int incomingjboxid = tokenStrings[3].toInt();
+            incomingjboxid = incomingjboxid - 100;
+            JboxPlayerID[incomingjboxid] = tokenStrings[5].toInt();
+            JboxTeamID[incomingjboxid] = tokenStrings[4].toInt();
+            JboxInPlay[incomingjboxid] = 1;
+            MULTIBASEDOMINATION = true;
+            Serial.println("processed update from node lora jbox");
+          }
+        }
+        if (tokenStrings[2] = "ASSAULT") {
+          // THIS IS FROM AN ASSAULT BASE WHERE A HOSTILE TIME HAS GAINED A POINT
+          // token 3 is the base id, token 4 is the team id, token 5 is the player id
+          int incomingjboxid = tokenStrings[4].toInt();
+          TeamScore[incomingjboxid]++; // added one point to the team that just captured a base
+          incomingjboxid = tokenStrings[5].toInt();
+          PlayerScore[incomingjboxid]++;  // added one point to the player that captured that same base
+          // now enable the web server to update the score         
+          Serial.println("Enable Score Posting");
+          UPDATEWEPAPP = true;          
+          Serial.println("processed update from node lora jbox");
+        }
         if (tokenStrings[2] = "GAMEOVER") {
           Serial.println("reset scores button pressed");
           Serial.println("All scores reset");
           ResetScores();
           rgbBlink();
-          colorposession = 7;
-          String LeadPlayerID = tokenStrings[3];
-          String LeadTeamID = tokenStrings[4];
-          broadcast("36,69,"+LeadPlayerID+","+LeadTeamID+",42");
-          Serial.println("Sent Game Ending ESPNOW Command");
         }
         digitalWrite(LED_BUILTIN, HIGH); // iluminte the onboard led
         receivercounter();
@@ -4278,7 +4288,7 @@ void TransmitLoRa() {
   // If needed to send a response to the sender, this function builds the needed string
   Serial.println("Transmitting Via LoRa"); // printing to serial monitor
   Serial1.print("AT+SEND=0,"+String(LoRaDataToSend.length())+","+LoRaDataToSend+"\r\n"); // used to send a data packet
-  //Serial1.print("AT+SEND=0,1,5\r\n"); // used to send data to the specified recipeint
+  Serial1.print("AT+SEND=0,1,5\r\n"); // used to send data to the specified recipeint
   //  Serial1.print("$PLAY,VA20,4,6,,,,,*");
   //  Serial.println("Sent the '5' to device 0");
   transmissioncounter();
@@ -4310,6 +4320,9 @@ void AddPointToTeamWithPossession() {
   if (CurrentDominationLeader != PreviousDominationLeader) { // We just had a change of score board leader
     PreviousDominationLeader = CurrentDominationLeader; // reset the leader board with new leader
     // Notifies players of leader change:
+    datapacket2 = 1420 + TeamID;
+    datapacket1 = 99;
+    BROADCASTESPNOW = true;
     Serial.println("A team has reached the goal, ending game");
   }
 } 
@@ -4465,6 +4478,12 @@ void RunEvolverUpgrade() {
   }
 }
 void RunDominationGame() {
+  // need to be continuously awaiting a tag from ir sensor
+  // need to change alignment when a new team has the base by shooting it and do nothing if the same team shoots it that has posession
+  // need to accumulate a point for every second that a team has posession of the base and update the score on the web server
+  // need to broadcast a notification via espnow in case other domination bases are near by that are also keeping track of points for players, every second so that each base is current on scores
+  // need to change the color of the rgb led when a team has the base
+  // need to also broadcast what player has the base and award a point to the player that has the base in case playing free for all and to recognize mvps
   if (GearMod == 0) {
     receiveBRXir(); // runs the ir receiver, looking for brx ir protocols
   }
@@ -4486,21 +4505,22 @@ void RunDominationGame() {
     }
   }
   if (LONGBUZZ) {
-    if (currentMillis1 - buzzerpreviousMillis  > 8000) {
+    if (currentMillis1 - buzzerpreviousMillis  > 5000) {
       EndLongBuzzer();
     }
   }
   if (NEWTAGRECEIVED) {
     NEWTAGRECEIVED = false; MOTIONDETECTED = false;
     // need to check if the new tag is from the same team as the last one received
+    RUNTHESNAKE = true;
     if (TeamID != LastPosessionTeam) {
       // we had a turnover...
       LastPosessionTeam = TeamID;
       BasicDomination();
-      if (Function == 5) {
+      if (Function == 101) {
         SharePointsWithOthers();
       }
-      if (Function == 4) {
+      if (Function == 100) {
         SharePointsWithOthersLoRa();
       }
     }
@@ -4515,13 +4535,6 @@ void RunDominationGame() {
       UPDATEWEPAPP = true;
       rgbblink();
       ShowScores();
-      if (GearMod == 0) {
-        TempDomTagCounter++;
-        if (TempDomTagCounter == 3) {
-          TempDomTagCounter = 0;
-          GasEm = true;
-        }
-      }
     }
   }
 }
@@ -4530,7 +4543,7 @@ void FiveMinuteScoreCheck() {
     // one team has 5 minutes
     DOMINATIONCLOCK = false;
     MULTIBASEDOMINATION = false;
-    // ends the game for everyone
+    GAMEOVER = true;
     StartLongBuzzer();
     Serial.println("A team has reached the goal, ending game");
   }
@@ -4544,15 +4557,81 @@ void TenMinuteScoreCheck() {
     // one team has 10 minutes
     DOMINATIONCLOCK = false;
     MULTIBASEDOMINATION = false;
-    // ends the game for everyone
     GAMEOVER = true;
     StartLongBuzzer();
     Serial.println("A team has reached the goal, ending game");
   }
   if (TeamScore[0] == 570 || TeamScore[1] == 570 || TeamScore[2] == 570 || TeamScore[3] == 570) {
     // one team has 9.5 minutes
-    GAMEOVER = true;
     Serial.println("A team is about to win");
+  }
+}
+void RunHostileBase() {
+  if (GearMod == 0) {
+    // send the alarm tag
+    BulletType = 15;
+    Damage = 10;
+    Team = 2; 
+    Player = 0;
+    Critical = 0;
+    Power = 0;
+    SetIRProtocol();
+  }
+  if (GearMod == 1) {
+    // we want a damage tag and an alarm tag if it exists, gas if it exists too or stun etc.
+  }
+  if (GearMod == 2) {
+    // we want a damage tag and an alarm tag if it exists, gas if it exists too or stun etc.
+  }
+  if (GearMod == 3) {
+    // we want a damage tag and an alarm tag if it exists, gas if it exists too or stun etc.
+  }
+  if (GearMod == 4) {
+    // we want a damage tag and an alarm tag if it exists, gas if it exists too or stun etc.
+  }
+}
+void RunAssault() {
+  // We want to be waiting for an IR tag to come in
+  // once the tag comes in, check to see if it is not equal to this base alignment as we dont want friendly fires
+  // If the base is hit by the enemey, the enemy scores a point
+  // the base is locked out sounding the siren and emitting an alarm tag if BRX as well and becomes very hostile 
+  // after 20 seconds the base returns to normal to allow it to be captured again.  
+  // at each point scored, lora broadcast to all bases to update scores at each station 
+  if (NEWTAGRECEIVED) {
+    NEWTAGRECEIVED = false; MOTIONDETECTED = false;
+    if (TeamID != colorposession) {
+      Serial.println("Run points accumulator");
+      PlayerScore[PlayerID]++;
+      TeamScore[TeamID]++;
+      Serial.println("Enable Score Posting");
+      UPDATEWEPAPP = true;
+      RGBDEMOMODE = false;
+      StartLongBuzzer();
+      // now send score updates
+      AssaultCaptureReport();
+    }
+  }
+  if (LONGBUZZ) { // running buzzer
+    if (currentMillis1 - buzzerpreviousMillis  > 2500) { // the value here leaves the buzzer on for that length of time, 5 times
+      EndLongBuzzer(); // runs 5 times to turn the buzzer off and delay for one second
+      RunHostileBase(); // base acts hostile
+    }
+  } else { // otherwise wait for an IR Tag
+    if (GearMod == 0) {
+      receiveBRXir(); // runs the ir receiver, looking for brx ir protocols
+    }
+    if (GearMod == 1) {
+      ReceiveEvolverIR(); // runs the ir receiver, looking for brx ir protocols
+    }
+    if (GearMod == 2) {
+      ReceiveLTTOIR(); // runs the ir receiver, looking for brx ir protocols
+    }
+    if (GearMod == 3) {
+      receiveBRXir(); // runs the ir receiver, looking for brx ir protocols
+    }
+    if (GearMod == 4) {
+      receiveLaserWarsir(); // runs the ir receiver, looking for LaserWars ir protocols
+    }
   }
 }
 void RunByShotAccumulator() {
@@ -4602,10 +4681,24 @@ void RunByShotAccumulator() {
 }
 void SharePointsWithOthers() {
   int teamvalue = 100 * TeamID; // 0 for red, 100 for blue, 200 for yellow, 300 for green
-  
+  datapacket2 = 10000 + teamvalue + PlayerID; // example team blue with player 16, 10116
+  datapacket1 = 199;
+  Serial.println("sending team and player alignment to other jboxes, here is the value being sent: " + String(datapacket2));
+  datapacket3 = JBOXID;
+  BROADCASTESPNOW = true;
 }
 void SharePointsWithOthersLoRa() {
   String FirstToken = "CAPTURE"; // 0 for red, 100 for blue, 200 for yellow, 300 for green, example team blue with player 16, 10116
+  byte SecondToken= JBOXID; // for directing who it is From
+  byte ThirdToken = TeamID; // What team captured base
+  byte FourthToken = PlayerID;  // Player ID
+  Serial.println("sending team and player alignment to other jboxes, here is the value being sent: ");
+  LoRaDataToSend = FirstToken + "," + String(SecondToken) + "," + String(ThirdToken) + "," + String(FourthToken);
+  Serial.println(LoRaDataToSend);
+  ENABLELORATRANSMIT = true;
+}
+void AssaultCaptureReport() {
+  String FirstToken = "ASSAULT"; // 0 for red, 100 for blue, 200 for yellow, 300 for green, example team blue with player 16, 10116
   byte SecondToken= JBOXID; // for directing who it is From
   byte ThirdToken = TeamID; // What team captured base
   byte FourthToken = PlayerID;  // Player ID
@@ -4839,9 +4932,9 @@ void ShowScores(void) {
 
 void ShowGameMode(void) {
   if (Function == 0) {GameModeText = "Basic Domination";}
-  if (Function == 4) {GameModeText = "Domination NodeLR";}
-  if (Function == 5) {GameModeText = "Domination NodeSR";}
-  if (Function == 6) {GameModeText = "Domination Master";}
+  if (Function == 100) {GameModeText = "Domination NodeLR";}
+  if (Function == 101) {GameModeText = "Domination NodeSR";}
+  if (Function == 102) {GameModeText = "Domination Master";}
   if (Function == 1) {GameModeText = "Domination 5Min";}
   if (Function == 2) {GameModeText = "Domination 10Min";}
   if (Function == 3) {GameModeText = "Shot Accumulator";}
@@ -4882,8 +4975,32 @@ void ShowGameMode(void) {
 // ***********************************  GAME LOOP  ****************************************
 // *****************************************************************************************
 void loop0(void *pvParameters) {
-Serial.print("Comms loop running on core ");
-Serial.println(xPortGetCoreID());
+  Serial.print("Comms loop running on core ");
+  Serial.println(xPortGetCoreID());
+  // initialize LoRa Serial Comms and network settings:
+  Serial.println("Initializing LoRa");
+  Serial1.begin(115200, SERIAL_8N1, SERIAL1_RXPIN, SERIAL1_TXPIN); // setting up the LoRa pins
+  Serial1.print("AT\r\n"); // checking that serial is working with LoRa module
+  delay(100);
+  //Serial1.print("AT+PARAMETER=10,7,1,7\r\n");    //For Less than 3Kms
+  Serial1.print("AT+PARAMETER= 12,4,1,7\r\n");    //For More than 3Kms
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+BAND=868500000\r\n");    //Bandwidth set to 868.5MHz
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+ADDRESS=900\r\n");   //needs to be unique
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+NETWORKID=0\r\n");   //needs to be same for receiver and transmitter
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+PARAMETER?\r\n");    //For Less than 3Kms
+  delay(100); // 
+  Serial1.print("AT+BAND?\r\n");    //Bandwidth set to 868.5MHz
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+NETWORKID?\r\n");   //needs to be same for receiver and transmitter
+  delay(100);   //wait for module to respond
+  Serial1.print("AT+ADDRESS?\r\n");   //needs to be unique
+  delay(100);   //wait for module to respond
+  Serial.println("LoRa Module Initialized");
+  LORALISTEN = true;
 for(;;) { // starts the forever loop 
   // put all the serial activities in here for communication with the brx
   currentMillis0 = millis(); // sets the timer for timed operations
@@ -4898,8 +5015,14 @@ for(;;) { // starts the forever loop
     Serial.println("Core 0 Cycles per Second: " + String(SpeedRate0));
     Serial.println();
   }
-  RunLEDSnake();
   ws.cleanupClients();
+  if (BROADCASTESPNOW) {
+    BROADCASTESPNOW = false;
+    getReadings();
+    BroadcastData(); // sending data via ESPNOW
+    Serial.println("Sent Data Via ESPNOW");
+    ResetReadings();
+  }
   if (MULTIBASEDOMINATION) {
     if (currentMillis0 - previousMillis0 > 1000) {  // will store last time LED was updated
       // NEED TO APPLY POINTS FOR OTHER DOMINATION BOXES POSESSIONS
@@ -4917,7 +5040,7 @@ for(;;) { // starts the forever loop
   }
   if (GAMEOVER) {
     GAMEOVER = false;
-    ResetScores();
+    Serial.println("Send to end games");
   }
   if (DOMINATIONCLOCK == true || MULTIBASEDOMINATION == true) {
     if (currentMillis0 - LastScoreUpdate > 1000) {
@@ -4925,14 +5048,6 @@ for(;;) { // starts the forever loop
       UpdateWebApp0();
       UpdateWebApp2();
     }
-  }
-  if (GasEm) {
-    GasEm = false;
-    GasPlayers();
-  }
-  if (CONTROLPOINTCAPTURED) {
-    CONTROLPOINTCAPTURED = false;
-    ControlPointCaptured();
   }
   //**************************************************************************************
   // LoRa Receiver Main Functions:
@@ -4942,6 +5057,9 @@ for(;;) { // starts the forever loop
   if (ENABLELORATRANSMIT) {
     TransmitLoRa();
     ENABLELORATRANSMIT = false;
+  }
+  if (RUNTHESNAKE) {
+    RunLEDSnake();
   }
   delay(1); // this has to be here or it will just continue to restart the esp32
   }
@@ -4979,43 +5097,44 @@ void setup(){
   if (Function == 0) {
       Serial.println("Basic Domination");
       rgbBlink();
-       
-      colorposession = 7;
+      LORALISTEN = false;
+      RUNTHESNAKE = false;
   }
-  if (Function == 4) {
+  if (Function == 100) {
     Serial.println("Domination Node - LoRa");
       rgbBlink();
       LORALISTEN = true;
-      colorposession = 7;
+      RUNTHESNAKE = false;
   }
-  if (Function == 5) {
+  if (Function == 101) {
     Serial.println("Domination Node - ESPNOW");
       rgbBlink();
-       
-      colorposession = 7;
+      LORALISTEN = false;
+      RUNTHESNAKE = false;
   }
-  if (Function == 6) {
+  if (Function == 102) {
     Serial.println("Domination Master");
       rgbBlink();
       LORALISTEN = true;
-      colorposession = 7;
+      RUNTHESNAKE = false;
   }
   if (Function == 1) {
     Serial.println("5 Minute Basic Domination");
       rgbBlink();
-       
-      colorposession = 7;
+      LORALISTEN = false;
+      RUNTHESNAKE = false;
   }
   if (Function == 2) {
     Serial.println("10 Minute Basic Domination");
       rgbBlink();
-       
-      colorposession = 7;
+      LORALISTEN = false;
+      RUNTHESNAKE = false;
   }
   if (Function == 3) {
     Serial.println("Shot Accumulator Mode");
       rgbBlink();
-      colorposession = 7;
+      LORALISTEN = false;
+      RUNTHESNAKE = false;
   }
   if (Function == 40) {
     Serial.println("Evolver Capture The Flag - red");
@@ -5024,7 +5143,7 @@ void setup(){
     Team == 0;
     resetRGB();
     RGBRED = true; colorposession = 0;
-    
+    RUNTHESNAKE = true;
   }
   if (Function == 41) {
     Serial.println("Evolver Capture The Flag - blue");
@@ -5033,7 +5152,7 @@ void setup(){
     Team == 1;
     resetRGB();
     RGBBLUE = true; colorposession = 1;
-    
+    RUNTHESNAKE = true;
   }
   if (Function == 42) {
     Serial.println("Evolver Capture The Flag - yellow");
@@ -5042,7 +5161,7 @@ void setup(){
     Team == 2;
     resetRGB();
     RGBYELLOW = true; colorposession = 2;
-    
+    RUNTHESNAKE = true;
   }
   if (Function == 43) {
     Serial.println("Evolver Capture The Flag - green");
@@ -5051,7 +5170,7 @@ void setup(){
     Team == 3;
     resetRGB();
     RGBGREEN = true; colorposession = 3;
-    
+    RUNTHESNAKE = true;
   }
   if (Function == 44) {
     BulletType = 10;
@@ -5059,7 +5178,8 @@ void setup(){
     Team == 2;  
     resetRGB(); 
     RGBWHITE = true; colorposession = 4; colorposession = 4;  
-     
+    RUNTHESNAKE = true; 
+    LORALISTEN = true;
   }
   if (Function == 45) {
     Serial.println("Evolver OTZ Station");
@@ -5068,7 +5188,7 @@ void setup(){
     Team == 2;  
     resetRGB(); 
     RGBPURPLE = true; colorposession = 5;  
-    
+    RUNTHESNAKE = true;
   }
   if (Function == 46) {
     Serial.println("Evolver Medic Station");
@@ -5077,7 +5197,7 @@ void setup(){
     Team == 2;  
     resetRGB(); 
     RGBCYAN = true; colorposession = 6;  
-    
+    RUNTHESNAKE = true;
   }
   if (Function == 47) {
     Serial.println("Evolver Upgrade Station");
@@ -5086,7 +5206,7 @@ void setup(){
     Team == 2;  
     resetRGB(); 
     RGBYELLOW = true; colorposession = 2;
-    
+    RUNTHESNAKE = true;
   }
   if (Function == 50) {
     Serial.println("BRX Red Respawn Station");
@@ -5099,8 +5219,8 @@ void setup(){
     resetRGB(); 
     RGBRED = true; colorposession = 0;   
     rgbBlink();
-     
-    
+    LORALISTEN = true;
+    RUNTHESNAKE = true;
   }
   if (Function == 51) {
     Serial.println("BRX Blue Respawn Station");
@@ -5113,8 +5233,8 @@ void setup(){
     resetRGB(); 
     RGBBLUE = true; colorposession = 1;   
     rgbBlink();
-     
-    
+    LORALISTEN = true;
+    RUNTHESNAKE = true;
   }
   if (Function == 52) {
     Serial.println("BRX Yellow Respawn Station");
@@ -5127,8 +5247,8 @@ void setup(){
     resetRGB(); 
     RGBYELLOW = true; colorposession = 2;   
     rgbBlink();
-     
-    
+    LORALISTEN = true;
+    RUNTHESNAKE = true;
   }
   if (Function == 53) {
     Serial.println("BRX gREEN Respawn Station");
@@ -5141,8 +5261,8 @@ void setup(){
     resetRGB(); 
     RGBGREEN = true; colorposession = 3;   
     rgbBlink();
-     
-    
+    LORALISTEN = true;
+    RUNTHESNAKE = true;
   }
   if (Function == 15) {
     Serial.println("Test Listen LoRa");
@@ -5152,6 +5272,11 @@ void setup(){
     Serial.println("Test Send LoRa");
     LORALISTEN = true;
   }
+
+
+
+
+  
   tempsetting = EEPROM.read(2);
   if (tempsetting < 255) {
     GearMod = tempsetting;
@@ -5237,34 +5362,6 @@ void setup(){
   pinMode(IR_Sensor_Pin, INPUT);
   Serial.println("Ready to recieve BRX IR");
   //***********************************************************************
-  // initialize LoRa Serial Comms and network settings:
-  Serial.println("Initializing LoRa");
-  Serial1.begin(115200, SERIAL_8N1, SERIAL1_RXPIN, SERIAL1_TXPIN); // setting up the LoRa pins
-  Serial1.print("AT\r\n"); // checking that serial is working with LoRa module
-  delay(100);
-  //Serial1.print("AT+PARAMETER=10,7,1,7\r\n");    //For Less than 3Kms
-  Serial1.print("AT+PARAMETER= 12,4,1,7\r\n");    //For More than 3Kms
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+BAND=868500000\r\n");    //Bandwidth set to 868.5MHz
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+ADDRESS="+String(JBOXID)+"\r\n");   //needs to be unique
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+NETWORKID=0\r\n");   //needs to be same for receiver and transmitter
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+PARAMETER?\r\n");    //For Less than 3Kms
-  delay(100); // 
-  Serial1.print("AT+BAND?\r\n");    //Bandwidth set to 868.5MHz
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+NETWORKID?\r\n");   //needs to be same for receiver and transmitter
-  delay(100);   //wait for module to respond
-  Serial1.print("AT+ADDRESS?\r\n");   //needs to be unique
-  delay(100);   //wait for module to respond
-  pinMode(LED_BUILTIN, OUTPUT); // setting up the onboard LED to be used
-  digitalWrite(LED_BUILTIN, LOW); // turn off onboard led
-  digitalWrite(LED_BUILTIN, HIGH); // turn on onboard led
-  delay(500);
-  digitalWrite(LED_BUILTIN, LOW); // turn off onboard led
-  Serial.println("LoRa Module Initialized");
   //***********************************************************************
   // initialize blinking led onboard
   pinMode(ledPin, OUTPUT);
@@ -5366,7 +5463,7 @@ void setup(){
   // start up dot stars 
   SetupDotStars();
   // Initialize the OLED display:
-  Wire.begin(19, 18); // Wire.begin(SDA, SCK); // changes pinout for display 19 and 18 for v5 33 and  and 32 for v4
+  Wire.begin(19, 18); // Wire.begin(SDA, SCK); // changes pinout for display
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if(!display.begin(SSD1306_SWITCHCAPVCC, SCREEN_ADDRESS)) {
     Serial.println(F("SSD1306 allocation failed"));
@@ -5384,7 +5481,7 @@ void setup(){
 } // End of setup.
 
 void loop() {
-//**********************************************************************
+  //**********************************************************************
   // OTA update loop, runs if in OTA Update Mode
   while (OTAMODE) {
     static int num=0;
@@ -5401,39 +5498,57 @@ void loop() {
       ESP.restart(); // we confirmed there is no update available, just reset and get ready to play 
     }
   }
-  ClockSpeedCheck();
-  if (Function < 7) { // Domination Node - LoRa
+  currentMillis1 = millis(); // sets the timer for timed operations
+  // CORE 0 SPEED TEST:
+  Core1++;
+  if (currentMillis1 - PreviousCore1Check > 10000) {
+    PreviousCore1Check = currentMillis1;
+    int CurrentSeconds1 = currentMillis1/1000;
+    int SpeedRate1 = Core1/CurrentSeconds1;
+    Serial.println();
+    Serial.println("Function = " + String(Function));
+    Serial.println("Core " + String(xPortGetCoreID()) + " Loop Counts: " + String(Core1));
+    Serial.println("Core 1 Cycles per Second: " + String(SpeedRate1));
+    Serial.println();
+  }
+  if (Function == 100) { // Domination Node - LoRa
+    RunDominationGame();      
+  }
+  if (Function == 101) { // domination node - ESPNOW
+    RunDominationGame();      
+  }
+  if (Function == 102) { // domination Master
+    RunDominationGame();      
+  }
+  if (Function == 0) { // basic domination mode
+    RunDominationGame();      
+  }
+  if (Function == 1) {
     RunDominationGame();
-    if (Function == 1) {
-      if (DOMINATIONCLOCK) {
-        FiveMinuteScoreCheck();
-      }
+    if (DOMINATIONCLOCK) {
+      FiveMinuteScoreCheck();
     }
-    if (Function == 2) {
-      if (DOMINATIONCLOCK) {
-        TenMinuteScoreCheck();
-      }
+  }
+  if (Function == 2) {
+    RunDominationGame();
+    if (DOMINATIONCLOCK) {
+      TenMinuteScoreCheck();
     }
   }
   if (Function == 3) {
     RunByShotAccumulator();
+  }
+  if (Function > 299 && Function < 306) {
+    RunAssault();
   }
   if (Function == 13) {
     RunBRXHeavyDamage();
   }
   if (Function == 14) {
     RunBRXPerkBox();
-    //vTaskDelay(0);
   }
-  if (Function > 49) {
-    if (Function < 54) {
-      RunBRXRespawn();
-    }
-  }
-  if (Function > 39) {
-    if (Function < 44) {
-      RunEvolverCaptureTheFlag();
-    }
+  if (Function == 40 || Function == 41 || Function == 42 || Function == 43){
+    RunEvolverCaptureTheFlag();
   }
   if (Function == 44){
     RunEvolverRespawnCover();
@@ -5446,34 +5561,26 @@ void loop() {
   }
   if (Function == 47){
     RunEvolverUpgrade();
-  }
+  }    
+  if (Function > 49 && Function < 54) {
+    RunBRXRespawn();
+  }  
   if (Function > 53 && Function < 60) {
     RunBRPRespawn();
   }
-  if (Function == 1000) { // running Order66
-    ExecuteOrder66();
+  if (Function == 6) {
+    
+  }
+  if (Function == 7) {
+    
   }
   if (Function == 16) {
     if (currentMillis1 - previousIRSend > 3000) {
       previousIRSend = currentMillis1;
       Damage++;
       SetEvolverIRProtocol();
+      //LoRaDataToSend = "RED,Player25,Poop,Herder";
+      //ENABLELORATRANSMIT = true;
     }
-  }
-}
-
-void ClockSpeedCheck() {
-  // CORE 1 SPEED TEST:
-  currentMillis1 = millis(); // sets the timer for timed operations
-  Core1++;
-  if (currentMillis1 - PreviousCore1Check > 10000) {
-    PreviousCore1Check = currentMillis1;
-    int CurrentSeconds1 = currentMillis1/1000;
-    int SpeedRate1 = Core1/CurrentSeconds1;
-    Serial.println();
-    Serial.println("Function = " + String(Function));
-    Serial.println("Core " + String(xPortGetCoreID()) + " Loop Counts: " + String(Core1));
-    Serial.println("Core 1 Cycles per Second: " + String(SpeedRate1));
-    Serial.println();
   }
 }
