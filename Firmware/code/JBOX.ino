@@ -43,7 +43,13 @@ const byte IR_Sensor_Pin = 32; // this is int input pin for ir receiver, use pin
 
 // Set GPIOs for LED and PIR Motion Sensor
 bool MOTIONDETECTED = false;
-
+bool POWERSAVER = false;
+byte BackgroundFunction = 0;
+bool RUNBACKGROUNDFUNCTION = false;
+int arcadeplayernumber = 99;
+long PlayerStartTime[16]; // use for arcade play time limits
+bool PlayerInGame[16];
+byte PlayerToEnd = 99;
 
 long Core0 = 0;
 long Core1 = 0;
@@ -52,6 +58,16 @@ long PreviousCore1Check = 0;
 
 // define the number of bytes I'm using/accessing for eeprom
 #define EEPROM_SIZE 102
+/*
+0 - OTA/boot status
+1 - Function
+2 - Gear Modifier
+3 - Power Saver Modifier and Background Functions
+10 - Jbox ID
+11-43 = wifi SSID
+44-100 - wifi password
+101 - motion sensor activated
+ */
 
 //*************************************************************************
 //******************** OTA UPDATES ****************************************
@@ -354,7 +370,39 @@ int LTTODamage = 1;
 uint8_t newMACAddress[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0xff}; 
 
 // REPLACE WITH THE MAC Address of your receiver, this is the address we will be sending to
-uint8_t broadcastAddress[] = {0x32, 0xAE, 0xA4, 0x07, 0x0D, 0x09};
+uint8_t broadcastAddress[] = {0xFF, 0xFF, 0xFF, 0xFF, 0xFF, 0xFF};
+// player number 1
+uint8_t arcadebroadcastAddress1[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x01};
+// player number 2
+uint8_t arcadebroadcastAddress2[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x02};  
+// player number 3
+uint8_t arcadebroadcastAddress3[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x03}; 
+// player number 4
+uint8_t arcadebroadcastAddress4[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x04}; 
+// player number 5
+uint8_t arcadebroadcastAddress5[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x05}; 
+// player number 6
+uint8_t arcadebroadcastAddress6[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x06};
+// player number 7
+uint8_t arcadebroadcastAddress7[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x07}; 
+// player number 8
+uint8_t arcadebroadcastAddress8[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x08}; 
+// player number 9
+uint8_t arcadebroadcastAddress9[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x09}; 
+// player number 10
+uint8_t arcadebroadcastAddress10[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0a}; 
+// player number 11
+uint8_t arcadebroadcastAddress11[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0b}; 
+// player number 12
+uint8_t arcadebroadcastAddress12[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0c}; 
+// player number 13
+uint8_t arcadebroadcastAddress13[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0d};
+// player number 14
+uint8_t arcadebroadcastAddress14[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0e}; 
+// player number 15
+uint8_t arcadebroadcastAddress15[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x0f}; 
+// player number 16
+uint8_t arcadebroadcastAddress16[] = {0x00, 0x00, 0x00, 0x00, 0x00, 0x10}; 
 
 
 // data to process espnow data
@@ -366,13 +414,13 @@ long previngamemillis = 0;
 byte SettingsGameMode = 0; // default is team battle, 1 is royale
 byte SettingsLives = 0; // default low, 1 is high
 byte SettingsLighting = 0; // High is default, 1 is low
-byte SettingsGameTime = 0; // off is default, 1 is on
+byte SettingsGameTime = 1; // off is default, 1 is on
 byte SettingsRespawn = 0; // auto is default, 1 is manual
 byte ObjectiveMode = 0;
 
 String SendStartBeacon = "null";
 String ConfirmBeacon = "null";
-
+String EndBeacon = "null";
 
 bool INGAME = false;
 
@@ -425,8 +473,255 @@ void receiveCallback(const uint8_t *macAddr, const uint8_t *data, int dataLen)
     rgbBlink();
     colorposession = 7;
   }
+  if (TokenStrings[1] == "79") {
+    Serial.println("Received a tagger host request/notification");
+    arcadeplayernumber = TokenStrings[2].toInt();
+    Serial.println("Player Number Received = " + String(arcadeplayernumber));
+    if (BackgroundFunction == 2) {
+      // Evolver Arcade Mode
+      Serial.println("run evolver arcade mode");
+      RunEvolverArcade();
+    }
+    if (BackgroundFunction == 3) {
+      // BRX Arcade Mode
+      RunBRXArcade();
+    }
+    rgbBlink();
+  }
 }
- 
+void EndArcadeGame() {
+  EndBeacon = "36,69,99,4,42";
+  if (PlayerToEnd == 0) {
+    arcadebroadcast1(EndBeacon);
+  }
+  if (PlayerToEnd == 1) {
+    arcadebroadcast2(EndBeacon);
+  }
+  if (PlayerToEnd == 2) {
+    arcadebroadcast3(EndBeacon);
+  }
+  if (PlayerToEnd == 3) {
+    arcadebroadcast4(EndBeacon);
+  }
+  if (PlayerToEnd == 4) {
+    arcadebroadcast5(EndBeacon);
+  }
+  if (PlayerToEnd == 5) {
+    arcadebroadcast6(EndBeacon);
+  }
+  if (PlayerToEnd == 6) {
+    arcadebroadcast7(EndBeacon);
+  }
+  if (PlayerToEnd == 7) {
+    arcadebroadcast8(EndBeacon);
+  }
+  if (PlayerToEnd == 8) {
+    arcadebroadcast9(EndBeacon);
+  }
+  if (PlayerToEnd == 9) {
+    arcadebroadcast10(EndBeacon);
+  }
+  if (PlayerToEnd == 10) {
+    arcadebroadcast11(EndBeacon);
+  }
+  if (PlayerToEnd == 11) {
+    arcadebroadcast12(EndBeacon);
+  }
+  if (PlayerToEnd == 12) {
+    arcadebroadcast13(EndBeacon);
+  }
+  if (PlayerToEnd == 13) {
+    arcadebroadcast14(EndBeacon);
+  }
+  if (PlayerToEnd == 14) {
+    arcadebroadcast15(EndBeacon);
+  }
+  if (PlayerToEnd == 15) {
+    arcadebroadcast16(EndBeacon);
+  }
+  Serial.println("Ended player " + String(PlayerToEnd) + "'s Game");
+}
+void RunEvolverArcade() {
+  SendStartBeacon = "36,65,0," + String(SettingsLighting) + "," + String(SettingsRespawn) + ",1," + String(SettingsGameTime) + "," + String(SettingsGameMode) + "," + String(SettingsLives) + ",1,42";
+  ConfirmBeacon = "36,97,17,0," + String(SettingsLighting) + "," + String(SettingsRespawn) + "," + String(SettingsGameTime) + "," + String(SettingsGameMode) + "," + String(SettingsLives) + ",1,42";      
+  if (arcadeplayernumber == 0) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast1(ConfirmBeacon);
+      Serial.println("Confirmed Player 1");
+    } else {
+      arcadebroadcast1(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast1(ConfirmBeacon);
+      Serial.println("Started Player 1");
+    }
+  }
+  if (arcadeplayernumber == 1) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast2(ConfirmBeacon);
+      Serial.println("Confirmed Player 2");
+    } else {
+      arcadebroadcast2(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast2(ConfirmBeacon);
+      Serial.println("Started Player 2");
+    }
+  }
+  if (arcadeplayernumber == 2) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast3(ConfirmBeacon);
+      Serial.println("Confirmed Player 3");
+    } else {
+      arcadebroadcast3(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast3(ConfirmBeacon);
+      Serial.println("Started Player 3");
+    }
+  }
+  if (arcadeplayernumber == 3) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast4(ConfirmBeacon);
+      Serial.println("Confirmed Player 4");
+    }else {
+      arcadebroadcast4(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast4(ConfirmBeacon);
+      Serial.println("Started Player 4");
+    }
+  }
+  if (arcadeplayernumber == 4) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast5(ConfirmBeacon);
+      Serial.println("Confirmed Player 5");
+    } else {
+      arcadebroadcast5(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast5(ConfirmBeacon);
+      Serial.println("Started Player 5");
+    }
+  }
+  if (arcadeplayernumber == 5) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast6(ConfirmBeacon);
+      Serial.println("Confirmed Player 6");
+    } else {
+      arcadebroadcast6(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast6(ConfirmBeacon);
+      Serial.println("Started Player 6");
+    }
+  }
+  if (arcadeplayernumber == 6) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast7(ConfirmBeacon);
+      Serial.println("Confirmed Player 7");
+    } else {
+      arcadebroadcast7(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast7(ConfirmBeacon);
+      Serial.println("Started Player 7");
+    }
+  }
+  if (arcadeplayernumber == 7) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast8(ConfirmBeacon);
+      Serial.println("Confirmed Player 8");
+    } else {
+      arcadebroadcast8(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast8(ConfirmBeacon);
+      Serial.println("Started Player 8");
+    }
+  }
+  if (arcadeplayernumber == 8) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast9(ConfirmBeacon);
+      Serial.println("Confirmed Player 9");
+    } else {
+      arcadebroadcast9(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast9(ConfirmBeacon);
+      Serial.println("Started Player 9");
+    }
+  }
+  if (arcadeplayernumber == 9) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast10(ConfirmBeacon);
+      Serial.println("Confirmed Player 10");
+    } else {
+      arcadebroadcast10(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast10(ConfirmBeacon);
+      Serial.println("Started Player 10");
+    }
+  }
+  if (arcadeplayernumber == 10) {
+    arcadebroadcast11(SendStartBeacon);
+    delay(1000);
+    arcadebroadcast11(ConfirmBeacon);
+    Serial.println("Started Player 11");
+  }
+  if (arcadeplayernumber == 11) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast12(ConfirmBeacon);
+      Serial.println("Confirmed Player 12");
+    } else {
+      arcadebroadcast12(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast12(ConfirmBeacon);
+      Serial.println("Started Player 12");
+    }
+  }
+  if (arcadeplayernumber == 12) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast13(ConfirmBeacon);
+      Serial.println("Confirmed Player 13");
+    } else {
+      arcadebroadcast13(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast13(ConfirmBeacon);
+      Serial.println("Started Player 13");
+    }
+  }
+  if (arcadeplayernumber == 13) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast14(ConfirmBeacon);
+      Serial.println("Confirmed Player 14");
+    } else {
+      arcadebroadcast14(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast14(ConfirmBeacon);
+      Serial.println("Started Player 14");
+    }
+  }
+  if (arcadeplayernumber == 14) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast15(ConfirmBeacon);
+      Serial.println("Confirmed Player 15");
+    } else {
+      arcadebroadcast15(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast15(ConfirmBeacon);
+      Serial.println("Started Player 15");
+    }
+  }
+  if (arcadeplayernumber == 15) {
+    if (TokenStrings[3] == "5") {
+      arcadebroadcast16(ConfirmBeacon);
+      Serial.println("Confirmed Player 16");
+    } else {
+      arcadebroadcast16(SendStartBeacon);
+      delay(1000);
+      arcadebroadcast16(ConfirmBeacon);
+      Serial.println("Started Player 16");
+    }
+  }
+  // Storing player ID as in game and their start time
+  PlayerInGame[arcadeplayernumber] = true;
+  PlayerStartTime[arcadeplayernumber] = millis();
+}
+void RunBRXArcade() {
+  
+}
 void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
 // Called when data is sent
 {
@@ -437,7 +732,679 @@ void sentCallback(const uint8_t *macAddr, esp_now_send_status_t status)
   Serial.print("Last Packet Send Status: ");
   Serial.println(status == ESP_NOW_SEND_SUCCESS ? "Delivery Success" : "Delivery Fail");
 }
+
+void arcadebroadcast1(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress1, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress1))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress1, (const uint8_t *)message.c_str(), message.length());
  
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 1");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast2(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress2, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress2))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress2, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 2");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast3(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress3, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress3))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress3, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 3");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast4(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress4, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress4))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress4, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 4");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast5(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress5, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress5))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress5, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 5");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast6(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress6, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress6))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress6, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 6");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast7(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress7, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress7))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress7, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 7");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast8(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress8, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress8))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress8, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 8");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast9(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress9, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress9))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress9, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 9");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast10(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress10, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress10))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress10, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 10");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast11(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress11, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress11))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress11, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 11");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast12(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress12, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress12))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress12, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 12");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast13(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress13, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress13))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress13, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 13");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast14(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress14, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress14))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress14, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 14");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast15(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress15, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress15))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress15, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 15");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
+void arcadebroadcast16(const String &message)
+// Emulates a broadcast
+{
+  esp_now_peer_info_t peerInfo = {};
+  memcpy(&peerInfo.peer_addr, arcadebroadcastAddress16, 6);
+  if (!esp_now_is_peer_exist(arcadebroadcastAddress16))
+  {
+    esp_now_add_peer(&peerInfo);
+  }
+  // Send message
+  esp_err_t result = esp_now_send(arcadebroadcastAddress16, (const uint8_t *)message.c_str(), message.length());
+ 
+  // Print results to serial monitor
+  if (result == ESP_OK)
+  {
+    Serial.println("Arcade Broadcast message success to player 16");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_INIT)
+  {
+    Serial.println("ESP-NOW not Init.");
+  }
+  else if (result == ESP_ERR_ESPNOW_ARG)
+  {
+    Serial.println("Invalid Argument");
+  }
+  else if (result == ESP_ERR_ESPNOW_INTERNAL)
+  {
+    Serial.println("Internal Error");
+  }
+  else if (result == ESP_ERR_ESPNOW_NO_MEM)
+  {
+    Serial.println("ESP_ERR_ESPNOW_NO_MEM");
+  }
+  else if (result == ESP_ERR_ESPNOW_NOT_FOUND)
+  {
+    Serial.println("Peer not found.");
+  }
+  else
+  {
+    Serial.println("Unknown error");
+  }
+}
 void broadcast(const String &message)
 // Emulates a broadcast
 {
@@ -649,229 +1616,394 @@ void UpdateWebApp2() {
 const char index_html[] PROGMEM = R"rawliteral(
 <!DOCTYPE HTML><html>
 <head>
-  <title>ESP Web Server</title>
+  <title>JBOX</title>
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="icon" href="data:,">
   <style>
-  html {
-    font-family: Arial;
-    display: inline-block;
-    text-align: center;
-  }
-  p {  font-size: 1.2rem;}
-  h1 {
-    font-size: 1.8rem;
+  .collapsible {
+    background-color: #23858B;
     color: white;
-  }
-  h2{
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: #143642;
-  }
-  .topnav {
-    overflow: hidden;
-    background-color: #143642;
-  }
-  body {
-    margin: 0;
-  }
-  .content {
-    padding: 30px;
-    max-width: 600px;
-    margin: 0 auto;
-  }
-  .card {
-    background-color: #F8F7F9;;
-    box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5);
-    padding-top:10px;
-    padding-bottom:20px;
-  }
-  .button {
-    padding: 15px 50px;
-    font-size: 24px;
+    cursor: pointer;
+    padding: 18px;
+    width: 100%;
+    border: none;
     text-align: center;
     outline: none;
-    color: #fff;
-    background-color: #0f8b8d;
-    border: none;
-    border-radius: 5px;
-    -webkit-touch-callout: none;
-    -webkit-user-select: none;
-    -khtml-user-select: none;
-    -moz-user-select: none;
-    -ms-user-select: none;
-    user-select: none;
-    -webkit-tap-highlight-color: rgba(0,0,0,0);
-   }
-   /*.button:hover {background-color: #0f8b8d}*/
-   .button:active {
-     background-color: #0f8b8d;
-     box-shadow: 2 2px #CDCDCD;
-     transform: translateY(2px);
-   }
-   .state {
-     font-size: 1.5rem;
-     color:#8c8c8c;
-     font-weight: bold;
-   }
-   .stopnav { overflow: hidden; background-color: #2f4468; color: white; font-size: 1.7rem; }
-   .scontent { padding: 20px; }
-   .scard { background-color: white; box-shadow: 2px 2px 12px 1px rgba(140,140,140,.5); }
-   .scards { max-width: 700px; margin: 0 auto; display: grid; grid-gap: 2rem; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
-   .sreading { font-size: 2.8rem; }
-   .spacket { color: #bebebe; }
-   .scard.red { color: #FC0000; }
-   .scard.blue { color: #003DFC; }
-   .scard.yellow { color: #E5D200; }
-   .scard.green { color: #00D02C; }
-   .scard.black { color: #000000; }
+    font-size: 15px;
+  }
+  .active, .collapsible:hover {
+    background-color: #4B5050;
+  }
+  .collapsible:after {
+    content: '\002B';
+    color: white;
+    font-weight: bold;
+    float: right;
+    margin-left: 5px;
+  }
+  .active:after {
+    content: "\2212";
+  }
+  .ccontent {
+    padding: 0 18px;
+    max-height: 0;
+    overflow: hidden;
+    transition: max-height 0.2s ease-out;
+  }
+  
+  .select-block {
+    width: 350px;
+    margin: 0px auto 30px;
+  }
+  select {
+    position: relative;
+    border: solid 1px rgba(0, 214, 252, 0.3);
+    background: none;
+    color: rgba(0, 214, 252, 0.5);
+    font-family: "Roboto", sans-serif;
+    text-transform: uppercase;
+    font-weight: normal;
+    letter-spacing: 1.8px;
+    height: 6vh;
+    padding: 0;
+    transition: all 0.25s ease;
+    outline: none;
+    width: 375px;
+  }
+  /* For IE <= 11 */
+    select::-ms-expand {
+    display: none;
+  }
+  select:hover,
+    select:focus {
+    color: #ffffff;
+    background-color: #002B3C;
+  }
+  select:hover~.selectIcon,
+  select:focus~.selectIcon {
+    background-color: white;
+  }
+  select:hover~.selectIcon svg.icon,
+    select:focus~.selectIcon svg.icon {
+    fill: #3FA2BC;
+  }
+  html, body {
+   font-family: Arial;
+   display: inline-block;
+   text-align: center;
+   height:85vh;
+  }
+  .state {
+    font-size: 1.6rem;
+    color:#8c8c8c;
+    font-weight: bold;
+  }
+  .button {
+    position: relative;
+    border: solid 1px rgba(0, 119, 139, 0.3);
+    background: #ffffff;
+    color: #000000;
+    font-family: "Roboto", sans-serif;
+    text-transform: uppercase;
+    font-weight: normal;
+    letter-spacing: 1.8px;
+    padding-left: 10px;
+    transition: all 0.25s ease;
+    outline: none;
+    width: 375px;
+    appearance: none;
+    height: 5vh;
+  }
+  .button:hover {
+    box-shadow: 1px 1px 8px #ffffff;
+    color: #ffffff;
+    text-shadow: 0 0 8px rgba(0, 214, 252, 0.4);
+  }
+  .button:hover.button:before {
+    left: 0;
+    width: 120px;
+  }
+  .button:hover.button:after {
+    right: 0;
+    width: 120px;
+  }
+  .button:hover .button-line:before {
+    bottom: 0;
+  }
+  .button:hover .button-line:after {
+    top: 0;
+  }
+  .hr {
+    width:375px;background-color:#417388; border:1px solid;
+  }
   </style>
-<title>JEDGE 3.0</title>
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<link rel="icon" href="data:,">
-</head>
-<body>
-  <div class="topnav">
-    <h1>JTOWER 5.2</h1>
-  </div>
-  <div class="content">
-    <div class="card">
-      <h2>Gear Selector</h2>
-      <p><select name="Gear" id="GearID">
-        <option value="100">BRX</option>
-        <option value="101">Evolver</option>
-        <option value="102">LTTO</option>
-        <option value="103">Battle Rifle Pro</option>
-        <option value="104">Laser Wars</option>
-        <option value="105">Ops Pro</option>
-        </select>
-      </p>
-      <h2>Primary Function</h2>
-      <p><select name="primary" id="primaryid">
-        <option value="0">Basic Domination</option>
-        <option value="1">5 Minute Domination</option>
-        <option value="2">10 Minute Domination</option>
-        <option value="0c">Domination Node - LoRa</option>
-        <option value="0a">Domination Node - ESPNOW</option>
-        <option value="0b">Domination Master</option>
-        <option value="3">Shots Accumulator</option>
-        <option value="4a">Evolver Capture The Flag - Red</option>
-        <option value="4b">Evolver Capture The Flag - Blue</option>
-        <option value="4c">Evolver Capture The Flag - Yellow</option>
-        <option value="4d">Evolver Capture The Flag - Green</option>
-        <option value="4e">Evolver Respawn - Cover Station</option>
-        <option value="4f">Evolver Own The Zone</option>
-        <option value="4g">Evolver Medic - BRoyale Checkpoint</option>
-        <option value="4h">Evolver Upgrade Station</option>
-        <option value="16">Evolver IR Test Mode</option>
-        <option value="11">Own The Zone</option>
-        <option value="5a">BRX Respawn Station - Red</option>
-        <option value="5b">BRX Respawn Station - Blue</option>
-        <option value="5d">BRX Respawn Station - Green</option>
-        <option value="5c">BRX Respawn Station - Yellow</option>
-        <option value="9">Capturable Respawn Station</option>
-        <option value="10">Loot Box</option>
-        <option value="11">Own The Zone</option>
-        <option value="12">Gas Drone - 5 Minute</option>
-        <option value="13">BRX Heavy Damage</option>
-        <option value="14">BRX Boost Box</option>
-        <option value="5e">BRP Respawn Station - All</option>
-        <option value="IRDebug">IR Debug</option>        
-        </select>
-      </p>
-      <h2>Motion Activation</h2>
-      <p><select name="motion" id="motionid">
-        <option value="xyz">Select</option>
-        <option value="20">On</option>
-        <option value="21">Off</option>
-        </select>
-      </p>
-      <p><button id="resetscores" class="button">Reset Domination Scores</button></p>
-      <p><button id="killplayers" class="button">End Game For All</button></p>
-      <p><button id="playball" class="button">Start New Game</button></p>
-    </div>
-  </div>
-  <div class="stopnav">
-    <h3>Score Reporting</h3>
-  </div>
-  <div class="scontent">
-    <div class="scards">
-      <div class="scard red">
-        <h4>Alpha Team</h4>
+<title>JBOX 5.2</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  </head>
+    <body style="background-color: #232E38;">
+    <center>
+    <table style="height: 85vh;border:solid 1px #167E91; background:#012A40;vertical-align:" class=".table">
+    <tr>
+    <br>
+    <td align="center" style="height: 85vh;">
+    <font style="size: 1.2em;color:#ffffff;">
+    <h2>JBOX 5.2</h2>
+    
+    <button class="collapsible">Base Scoring</button>
+      <div class="ccontent">
+        <h4>Alpha/Red Team</h4>
         <p><span class="reading"> Points:<span id="to0"></span></p>
-      </div>
-      <div class="scard blue">
-        <h4>Bravo Team</h4><p>
+        <h4>Bravo/Blue Team</h4><p>
         <p><span class="reading"> Points:<span id="to1"></span></p>
-      </div>
-      <div class="scard yellow">
-        <h4>Charlie Team</h4>
+        <h4>Charlie/Yellow Team</h4>
         <p><span class="reading"> Points:<span id="to2"></span></p>
-      </div>
-      <div class="scard green">
-        <h4>Delta Team</h4>
+        <h4>Delta/Green Team</h4>
         <p><span class="reading"> Points:<span id="to3"></span></p>
-      </div>
-    </div>
-  </div>
-  <div class="stopnav">
-    <h3>Game Highlights</h3>
-  </div>
-  <div class="scontent">
-    <div class="scards">
-      <div class="scard black">
-      <h2>Most Points</h2>
+        <h4>Player Highlights</h4>
         <p><span class="reading">Player <span id="MO0"></span><span class="reading"> : <span id="MO10"></span></p>
         <p><span class="reading">Player <span id="MO1"></span><span class="reading"> : <span id="MO11"></span></p>
         <p><span class="reading">Player <span id="MO2"></span><span class="reading"> : <span id="MO12"></span></p>
+        <p><button id="resetscores" class="button">Reset Domination Scores</button></p>
+        <p><button id="killplayers" class="button">End Game For All</button></p>
+        <p><button id="playball" class="button">Start New Game</button></p>
       </div>
-    </div>
-  </div>
-  <div class="topnav">
-    <h1>JBOX DEBUG</h1>
-  </div>
-  <div class="content">
-    <div class="card">
-    <p><button id="loratest" class="button">Test Lora</button></p>
-    <h2>Device ID Assignment</h2>
-      <p><select name="devicename" id="devicenameid">
-        <option value="965">Select JBOX ID</option>
-        <option value="900">JBOX 100</option>
-        <option value="901">JBOX 101</option>
-        <option value="902">JBOX 102</option>
-        <option value="903">JBOX 103</option>
-        <option value="904">JBOX 104</option>
-        <option value="905">JBOX 105</option>
-        <option value="906">JBOX 106</option>
-        <option value="907">JBOX 107</option>
-        <option value="908">JBOX 108</option>
-        <option value="909">JBOX 109</option>
-        <option value="910">JBOX 110</option>
-        <option value="911">JBOX 111</option>
-        <option value="912">JBOX 112</option>
-        <option value="913">JBOX 113</option>
-        <option value="914">JBOX 114</option>
-        <option value="915">JBOX 115</option>
-        <option value="916">JBOX 116</option>
-        <option value="917">JBOX 117</option>
-        <option value="918">JBOX 118</option>
-        <option value="919">JBOX 119</option>
-        <option value="920">JBOX 120</option>
+      
+    <button class="collapsible">JBOX SETTINGS</button>
+    <div class="ccontent">
+    <p><select name="BRX" id="BRXID">
+        <option value="XX">BRX Modes</option>
+        <option value="BRXDom">BRX - Basic Domination</option>
+        <option value="BRXDom5">BRX - 5 Min Domination</option>
+        <option value="BRXDom10">BRX - 10 Min Domination</option>
+        <option value="BRXDomNodeLora">BRX - Domination Node (LoRa)</option>
+        <option value="BRXDomNodeNow">BRX - Domination Node (ESPNow)</option>
+        <option value="BRXDomMaster">BRX - Domination Master</option>
+        <option value="BRXShots">BRX - Shots Accumulator</option>
+        <option value="5a">BRX - Red Respawn</option>
+        <option value="5b">BRX - Blue Respawn</option>
+        <option value="5d">BRX - Green Respawn</option>
+        <option value="5c">BRX - Yellow Respawn</option>
+        <option value="9">BRX - Capturabel Respawn</option>
+        <option value="14">BRX - Stat Boost</option>
+      </select>
+    </p>
+    <p><select name="Evolver" id="EvolverID">
+        <option value="xx">Evolver Modes</option>
+        <option value="EvolverDom">Evolver - Basic Domination</option>
+        <option value="EvolverDom5">Evolver - 5 Minute Domination</option>
+        <option value="EvolverDom10">Evolver - 10 Minute Domination</option>
+        <option value="EvolverDomNodeLora">Evolver - Domination Node - LoRa</option>
+        <option value="EvolverDomNodeNow">Evolver - Domination Node - ESPNOW</option>
+        <option value="EvolverDomMaster">Evolver - Domination Master</option>
+        <option value="EvolverShots">Evolver - Shots Accumulator</option>
+        <option value="4a">Evolver - Capture The Flag - Red</option>
+        <option value="4b">Evolver - Capture The Flag - Blue</option>
+        <option value="4c">Evolver - Capture The Flag - Yellow</option>
+        <option value="4d">Evolver - Capture The Flag - Green</option>
+        <option value="4e">Evolver - Respawn - Cover Station</option>
+        <option value="4f">Evolver - Own The Zone</option>
+        <option value="4g">Evolver - Medic - BRoyale Checkpoint</option>
+        <option value="4h">Evolver - Upgrade Station</option>
+        <option value="16">Evolver - IR Test Mode</option>
+        <option value="IRDebug">Evolver - IR Debug</option>        
+      </select>
+    </p>
+    <p><select name="LTTO" id="LTTOID">
+        <option value="xx">LTTO Modes</option>
+        <option value="LTTODom">LTTO - Basic Domination</option>
+        <option value="LTTODom5">LTTO - 5 Minute Domination</option>
+        <option value="LTTODom10">LTTO - 10 Minute Domination</option>
+        <option value="LTTODomNodeLora">LTTO - Domination Node - LoRa</option>
+        <option value="LTTODomNodeNow">LTTO - Domination Node - ESPNOW</option>
+        <option value="LTTODomMaster">LTTO - Domination Master</option>
+        <option value="LTTOShots">LTTO - Shots Accumulator</option>
+        <option value="IRDebug">LTTO - IR Debug</option>        
         </select>
       </p>
-      <form action="/get">
-        wifi ssid: <input type="text" name="input1">
-        <input type="submit" value="Submit">
-      </form><br>
-      <form action="/get">
-        wifi pass: <input type="text" name="input2">
-        <input type="submit" value="Submit">
-      </form><br>
-      <p><button id="otaupdate" class="button">OTA Firmware Refresh</button></p>
+      <p><select name="BRP" id="BRPID">
+        <option value="xx">BRP Modes</option>
+        <option value="BRPDom">BRP - Basic Domination</option>
+        <option value="BRPDom5">BRP - 5 Minute Domination</option>
+        <option value="BRPDom10">BRP - 10 Minute Domination</option>
+        <option value="BRPDomNodeLora">BRP - Domination Node - LoRa</option>
+        <option value="BRPDomNodeNow">BRP - Domination Node - ESPNOW</option>
+        <option value="BRPDomMaster">BRP - Domination Master</option>
+        <option value="BRPShots">BRP - Shots Accumulator</option>
+        <option value="IRDebug">BRP - IR Debug</option>        
+        </select>
+      </p>
+      <p><select name="Wars" id="WarsID">
+        <option value="xx">LaserWars Modes</option>
+        <option value="WarsDom">LaserWars - Basic Domination</option>
+        <option value="WarsDom5">LaserWars - 5 Minute Domination</option>
+        <option value="WarsDom10">LaserWars - 10 Minute Domination</option>
+        <option value="WarsDomNodeLora">LaserWars - Domination Node - LoRa</option>
+        <option value="WarsDomNodeNow">LaserWars - Domination Node - ESPNOW</option>
+        <option value="WarsDomMaster">LaserWars - Domination Master</option>
+        <option value="WarsShots">LaserWars - Shots Accumulator</option>
+        <option value="IRDebug">LaserWars - IR Debug</option>        
+        </select>
+      </p>
+      <p><select name="Ops" id="OpsID">
+        <option value="xx">Laser Ops Pro Modes</option>
+        <option value="OpsDom">LOPS - Basic Domination</option>
+        <option value="OpsDom5">LOPS - 5 Minute Domination</option>
+        <option value="OpsDom10">LOPS - 10 Minute Domination</option>
+        <option value="OpsDomNodeLora">LOPS - Domination Node - LoRa</option>
+        <option value="OpsDomNodeNow">LOPS - Domination Node - ESPNOW</option>
+        <option value="OpsDomMaster">LOPS - Domination Master</option>
+        <option value="OpsShots">LOPS - Shots Accumulator</option>
+        <option value="IRDebug">LOPS - IR Debug</option>        
+        </select>
+      </p>
+      <p><select name="Background" id="BackgroundID">
+        <option value="xx">Enable Any Background Functions</option>
+        <option value="EvolverArcade">Evolver - Arcade Mode</option>
+        <option value="BRXArcade">BRX - Arcade Mode</option>
+        <option value="PSaverOn">Power Saver - On</option>
+        <option value="PSaverOff">None</option>
+        </select>
+      </p>
     </div>
-  </div>
-  
+    <button class="collapsible">Battle Rifle Pro - Admin</button>
+    <div class="ccontent">
+      <p><select name="BRPTeam" id="BRPTeamID">
+        <option value="xx">BRP Admin - Team</option>
+        <option value="BRPTeamRed">BRP Team - Red</option>
+        <option value="BRPTeamBlue">BRP Team - Blue</option>
+        <option value="BRPTeamYellow">BRP Team - Yellow</option>
+        <option value="BRPTeamGreen">BRP Team - Green</option>
+        <option value="BRPTeamCyan">BRP Team - Cyan</option>
+        <option value="BRPTeamPurple">BRP Team - Purple</option>
+       <option value="BRPTeamAll">BRP Team - All</option>
+        </select>
+      </p>
+      <p><select name="BRPWeap" id="BRPWeapID">
+        <option value="xx">BRP Admin - Primary Weapon</option>
+        <option value="BRPWeapBR">BRP Weapon - Battle Rifle</option>
+        <option value="BRPWeapBurst">BRP Weapon - Burst Rifle</option>
+        <option value="BRPWeapHeavy">BRP Weapon - Heavy Machine Gun</option>
+        <option value="BRPWeapCannon">BRP Weapon - Battle Cannon</option>
+        <option value="BRPWeapALaser">BRP Weapon - Assault Laser</option>
+        <option value="BRPWeapCharge">BRP Weapon - Charge Rifle</option>
+        <option value="BRPWeapLaserR">BRP Weapon - Laser Rifle</option>
+        <option value="BRPWeapInfected">BRP Weapon - Infected Gun</option>
+        <option value="BRPWeapC1">BRP Weapon - Custom 1</option>
+        <option value="BRPWeapC2">BRP Weapon - Custom 2</option>
+        <option value="BRPWeapC3">BRP Weapon - Custom 3</option>
+        <option value="BRPWeapGren">BRP Weapon - Grenade Launcher</option>
+        <option value="BRPWeapFlash">BRP Weapon - Flash Bang</option>
+        <option value="BRPWeapSticky">BRP Weapon - Sticky Grenades</option>
+        <option value="BRPWeapSniper">BRP Weapon - Sniper</option>
+        <option value="BRPWeapShotgun">BRP Weapon - Shotgun</option>
+        </select>
+      </p>
+      <p><select name="BRPWeap2" id="BRPWeap2ID">
+        <option value="xx">BRP Admin - Secondary Weapon</option>
+        <option value="BRPWeap2BR">BRP Weapon - Battle Rifle</option>
+        <option value="BRPWeap2Burst">BRP Weapon - Burst Rifle</option>
+        <option value="BRPWeap2Heavy">BRP Weapon - Heavy Machine Gun</option>
+        <option value="BRPWeap2Cannon">BRP Weapon - Battle Cannon</option>
+        <option value="BRPWeap2ALaser">BRP Weapon - Assault Laser</option>
+        <option value="BRPWeap2Charge">BRP Weapon - Charge Rifle</option>
+        <option value="BRPWeap2LaserR">BRP Weapon - Laser Rifle</option>
+        <option value="BRPWeap2Infected">BRP Weapon - Infected Gun</option>
+        <option value="BRPWeap2C1">BRP Weapon - Custom 1</option>
+        <option value="BRPWeap2C2">BRP Weapon - Custom 2</option>
+        <option value="BRPWeap2C3">BRP Weapon - Custom 3</option>
+        <option value="BRPWeap2Gren">BRP Weapon - Grenade Launcher</option>
+        <option value="BRPWeap2Flash">BRP Weapon - Flash Bang</option>
+        <option value="BRPWeap2Sticky">BRP Weapon - Sticky Grenades</option>
+        <option value="BRPWeap2Sniper">BRP Weapon - Sniper</option>
+        <option value="BRPWeap2Shotgun">BRP Weapon - Shotgun</option>
+        </select>
+      </p>
+      <p><select name="BRPPlayerType" id="BRPPlayerTypeID">
+        <option value="xx">BRP Admin - Player Type</option>
+        <option value="BRPPlayerMedic">BRP Player - Medic</option>
+        <option value="BRPPlayerAmmo">BRP Player - Ammo</option>
+        <option value="BRPPlayerRevive">BRP Player - Revive</option>
+        <option value="BRPPlayerInfected">BRP Player - Infected</option>
+        <option value="BRPPlayerVIP">BRP Player - VIP</option>
+        <option value="BRPPlayerStandard">BRP Player - Standard</option>
+        <option value="BRPPlayerCus1">BRP Player - Custom 1</option>
+        <option value="BRPPlayercus2">BRP Player - Custom 2</option>
+        </select>
+      </p>
+      <p><select name="BRPGameMode" id="BRPGameModeID">
+        <option value="xx">BRP Admin - Game Mode</option>
+        <option value="BRPTeamBattle">BRP Game - Team Battle</option>
+        <option value="BRPVIP">BRP Game - VIP</option>
+        <option value="BRPDomination">BRP Game - Domination</option>
+        <option value="BRPInfection">BRP Game - Infection</option>
+        <option value="BRPFree4All">BRP Game - Free For All</option>
+        <option value="BRPCapturetheFlag">BRP Game - Capture the Flag</option>
+        </select>
+      </p>
+      <p><button id="BRPStartGames" class="button">Start Players</button></p>
+    </div>
+      <button class="collapsible">Debug / Updates</button>
+      <div class="ccontent">
+        <p><button id="loratest" class="button">Test Lora</button></p>
+        <p><select name="devicename" id="devicenameid">
+          <option value="965">  Set JBOX ID Number</option>
+          <option value="900">JBOX 100</option>
+          <option value="901">JBOX 101</option>
+          <option value="902">JBOX 102</option>
+          <option value="903">JBOX 103</option>
+          <option value="904">JBOX 104</option>
+          <option value="905">JBOX 105</option>
+          <option value="906">JBOX 106</option>
+          <option value="907">JBOX 107</option>
+          <option value="908">JBOX 108</option>
+          <option value="909">JBOX 109</option>
+          <option value="910">JBOX 110</option>
+          <option value="911">JBOX 111</option>
+          <option value="912">JBOX 112</option>
+          <option value="913">JBOX 113</option>
+          <option value="914">JBOX 114</option>
+          <option value="915">JBOX 115</option>
+          <option value="916">JBOX 116</option>
+          <option value="917">JBOX 117</option>
+          <option value="918">JBOX 118</option>
+          <option value="919">JBOX 119</option>
+          <option value="920">JBOX 120</option>
+          </select>
+        </p>
+      <p><select name="motion" id="motionid">
+        <option value="xyz">  Motion Activation On/Off</option>
+        <option value="20">On</option>
+        <option value="21">Off</option>
+        </select>
+      </p>  
+        <form action="/get">
+          wifi ssid: <input type="text" name="input1">
+          <input type="submit" value="Submit">
+        </form><br>
+        <form action="/get">
+          wifi pass: <input type="text" name="input2">
+          <input type="submit" value="Submit">
+        </form><br>
+        <p><button id="otaupdate" class="button">OTA Firmware Refresh</button></p>
+      </div>
 <script>
+
+var coll = document.getElementsByClassName("collapsible");
+var i;
+
+for (i = 0; i < coll.length; i++) {
+  coll[i].addEventListener("click", function() {
+    this.classList.toggle("active");
+    var content = this.nextElementSibling;
+    if (content.style.maxHeight){
+      content.style.maxHeight = null;
+    } else {
+      content.style.maxHeight = content.scrollHeight + "px";
+    } 
+  });
+}
+
 if (!!window.EventSource) {
  var source = new EventSource('/events');
  
@@ -932,8 +2064,6 @@ if (!!window.EventSource) {
     initButton();
   }
   function initButton() {
-    document.getElementById('GearID').addEventListener('change', handlegear, false);
-    document.getElementById('primaryid').addEventListener('change', handleprimary, false);
     document.getElementById('motionid').addEventListener('change', handlemotion, false);
     document.getElementById('resetscores').addEventListener('click', toggle14s);
     document.getElementById('otaupdate').addEventListener('click', toggle14o);
@@ -941,7 +2071,20 @@ if (!!window.EventSource) {
     document.getElementById('killplayers').addEventListener('click', toggle14a);
     document.getElementById('playball').addEventListener('click', toggle14b);
     document.getElementById('devicenameid').addEventListener('change', handledevicename, false);
-    
+    document.getElementById('EvolverID').addEventListener('change', handleEvolver, false);
+    document.getElementById('BRXID').addEventListener('change', handleBRX, false);
+    document.getElementById('LTTOID').addEventListener('change', handleLTTO, false);
+    document.getElementById('OpsID').addEventListener('change', handleOps, false);    
+    document.getElementById('BRPID').addEventListener('change', handleBRP, false);
+    document.getElementById('BRPPlayerTypeID').addEventListener('change', handleBRPPlayerType, false);
+    document.getElementById('BRPGameModeID').addEventListener('change', handleBRPGameMode, false);
+    document.getElementById('BRPWeap2ID').addEventListener('change', handleBRPWeap2, false);
+    document.getElementById('BRPWeapID').addEventListener('change', handleBRPWeap, false);
+    document.getElementById('BRPTeamID').addEventListener('change', handleBRPTeam, false);
+    document.getElementById('WarsID').addEventListener('change', handleWars, false);
+    document.getElementById('BRPStartGames').addEventListener('click', toggleBRPStart);  
+    document.getElementById('BackgroundID').addEventListener('change', handleBackground, false);
+      
   }
   function toggle14s(){
     websocket.send('toggle14s');
@@ -958,12 +2101,55 @@ if (!!window.EventSource) {
   function toggle14c(){
     websocket.send('toggle14c');
   }
-  function handlegear() {
-    var xb = document.getElementById("GearID").value;
-    websocket.send(xb);
+  function toggleBRPStart(){
+    websocket.send('toggleBRPStart');
   }
-  function handleprimary() {
-    var xa = document.getElementById("primaryid").value;
+  function handleBackground() {
+    var xa = document.getElementById("BackgroundID").value;
+    websocket.send(xa);
+  }
+  function handleEvolver() {
+    var xa = document.getElementById("EvolverID").value;
+    websocket.send(xa);
+  }
+  function handleBRX() {
+    var xa = document.getElementById("BRXID").value;
+    websocket.send(xa);
+  }
+  function handleBRP() {
+    var xa = document.getElementById("BRPID").value;
+    websocket.send(xa);
+  }
+  function handleBRPTeam() {
+    var xa = document.getElementById("BRPTeamID").value;
+    websocket.send(xa);
+  }
+  function handleBRPWeap() {
+    var xa = document.getElementById("BRPWeapID").value;
+    websocket.send(xa);
+  }
+  function handleBRPWeap2() {
+    var xa = document.getElementById("BRPWeap2ID").value;
+    websocket.send(xa);
+  }
+  function handleBRPPlayerType() {
+    var xa = document.getElementById("BRPPlayerTypeID").value;
+    websocket.send(xa);
+  }
+  function handleBRPGameMode() {
+    var xa = document.getElementById("BRPGameModeID").value;
+    websocket.send(xa);
+  }
+  function handleWars() {
+    var xa = document.getElementById("WarsID").value;
+    websocket.send(xa);
+  }
+  function handleOps() {
+    var xa = document.getElementById("OpsID").value;
+    websocket.send(xa);
+  }
+  function handleLTTO() {
+    var xa = document.getElementById("LTTOID").value;
     websocket.send(xa);
   }
   function handlemotion() {
@@ -1036,18 +2222,120 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       ESP.restart();
       //INITIALIZEOTA = true;
     }
-    if (strcmp((char*)data, "0") == 0) {
+    if (strcmp((char*)data, "LTTODom") == 0) {
       Function = 0;
       ResetScores();
       EEPROM.write(1, Function);
       EEPROM.commit();
       Serial.println("Basic Domination");
       rgbBlink();
-       
+      GearMod = 2;
+      ResetScores();
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LTTO");
       colorposession = 7;
       ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
     }
-    if (strcmp((char*)data, "0c") == 0) {
+    if (strcmp((char*)data, "BRPDom") == 0) {
+      Function = 0;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Basic Domination");
+      rgbBlink();
+      GearMod = 3;
+      ResetScores();
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRP");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "WarsDom") == 0) {
+      Function = 0;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Basic Domination");
+      rgbBlink();
+      GearMod = 4;
+      ResetScores();
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LaserWars");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "OpsDom") == 0) {
+      Function = 0;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Basic Domination");
+      rgbBlink();
+      GearMod = 5;
+      ResetScores();
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Ops Pro");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "EvolverDom") == 0) {
+      Function = 0;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Basic Domination");
+      rgbBlink();
+      GearMod = 1;
+      ResetScores();
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Evolver");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "BRXDom") == 0) {
+      Function = 0;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Basic Domination");
+      rgbBlink();
+      GearMod = 0;
+      ResetScores();
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "LTTODomNodeLora") == 0) {
       Function = 4;
       ResetScores();
       EEPROM.write(1, Function);
@@ -1056,20 +2344,220 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       rgbBlink();
       LORALISTEN = true;
       colorposession = 7;
+      GearMod = 2;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LTTO");
       ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
     }
-    if (strcmp((char*)data, "0a") == 0) {
+    if (strcmp((char*)data, "BRPDomNodeLora") == 0) {
+      Function = 4;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Node - LoRa");
+      rgbBlink();
+      LORALISTEN = true;
+      colorposession = 7;
+      GearMod = 3;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRP");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "WarsDomNodeLora") == 0) {
+      Function = 4;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Node - LoRa");
+      rgbBlink();
+      LORALISTEN = true;
+      colorposession = 7;
+      GearMod = 4;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Laserwars");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "OpsDomNodeLora") == 0) {
+      Function = 4;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Node - LoRa");
+      rgbBlink();
+      LORALISTEN = true;
+      colorposession = 7;
+      GearMod = 5;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Ops Pro");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "BRXDomNodeLora") == 0) {
+      Function = 4;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Node - LoRa");
+      rgbBlink();
+      LORALISTEN = true;
+      colorposession = 7;
+      GearMod = 0;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRX");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "EvolverDomNodeLora") == 0) {
+      Function = 4;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Node - LoRa");
+      rgbBlink();
+      LORALISTEN = true;
+      colorposession = 7;
+      GearMod = 1;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Evolver");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "LTTODomNodeNow") == 0) {
       Function = 5;
       ResetScores();
       EEPROM.write(1, Function);
       EEPROM.commit();
       Serial.println("Domination Node - ESPNOW");
       rgbBlink();
-       
+      GearMod = 2;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Ltto");
       colorposession = 7;
       ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
     }
-    if (strcmp((char*)data, "0b") == 0) {
+    if (strcmp((char*)data, "BRPDomNodeNow") == 0) {
+      Function = 5;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Node - ESPNOW");
+      rgbBlink();
+      GearMod = 3;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRP");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "WarsDomNodeNow") == 0) {
+      Function = 5;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Node - ESPNOW");
+      rgbBlink();
+      GearMod = 4;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LaserWars");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "OpsDomNodeNow") == 0) {
+      Function = 5;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Node - ESPNOW");
+      rgbBlink();
+      GearMod = 5;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Ops Pro");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "EvolverDomNodeNow") == 0) {
+      Function = 5;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Node - ESPNOW");
+      rgbBlink();
+      GearMod = 1;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Evolver");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "BRXDomNodeNow") == 0) {
+      Function = 5;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Node - ESPNOW");
+      rgbBlink();
+      GearMod = 0;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRX");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "LTTODomMaster") == 0) {
       Function = 6;
       ResetScores();
       EEPROM.write(1, Function);
@@ -1078,31 +2566,328 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       rgbBlink();
       LORALISTEN = true;
       colorposession = 7;
+      GearMod = 2;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LTTO");
       ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
     }
-    if (strcmp((char*)data, "1") == 0) {
+    if (strcmp((char*)data, "BRPDomMaster") == 0) {
+      Function = 6;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Master");
+      rgbBlink();
+      LORALISTEN = true;
+      colorposession = 7;
+      GearMod = 3;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRP");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "WarsDomMaster") == 0) {
+      Function = 6;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Master");
+      rgbBlink();
+      LORALISTEN = true;
+      colorposession = 7;
+      GearMod = 4;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LaserWars");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "OpsDomMaster") == 0) {
+      Function = 6;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Master");
+      rgbBlink();
+      LORALISTEN = true;
+      colorposession = 7;
+      GearMod = 5;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Ops Pro");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "BRXDomMaster") == 0) {
+      Function = 6;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Master");
+      rgbBlink();
+      LORALISTEN = true;
+      colorposession = 7;
+      GearMod = 0;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRX");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "EvolverDomMaster") == 0) {
+      Function = 6;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Domination Master");
+      rgbBlink();
+      LORALISTEN = true;
+      colorposession = 7;
+      GearMod = 1;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Evolver");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "LTTODom5") == 0) {
       Function = 1;
       ResetScores();
       EEPROM.write(1, Function);
       EEPROM.commit();
       Serial.println("5 Minute Basic Domination");
       rgbBlink();
-       
+      GearMod = 2;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LTTO");
       colorposession = 7;
       ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
     }
-    if (strcmp((char*)data, "2") == 0) {
+    if (strcmp((char*)data, "BRPDom5") == 0) {
+      Function = 1;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("5 Minute Basic Domination");
+      rgbBlink();
+      GearMod = 3;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRP");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "WarsDom5") == 0) {
+      Function = 1;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("5 Minute Basic Domination");
+      rgbBlink();
+      GearMod = 4;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LaserWars");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "OpsDom5") == 0) {
+      Function = 1;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("5 Minute Basic Domination");
+      rgbBlink();
+      GearMod = 5;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Ops Pro");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "EvolverDom5") == 0) {
+      Function = 1;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("5 Minute Basic Domination");
+      rgbBlink();
+      GearMod = 1;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Evolver");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "BRXDom5") == 0) {
+      Function = 1;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("5 Minute Basic Domination");
+      rgbBlink();
+      GearMod = 0;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRX");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "EvolverDom10") == 0) {
       Function = 2;
       ResetScores();
       EEPROM.write(1, Function);
       EEPROM.commit();
       Serial.println("10 Minute Basic Domination");
       rgbBlink();
-       
+      GearMod = 1;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Evolver");
       colorposession = 7;
       ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
     }
-    if (strcmp((char*)data, "3") == 0) {
+    if (strcmp((char*)data, "LTTODom10") == 0) {
+      Function = 2;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("10 Minute Basic Domination");
+      rgbBlink();
+      GearMod = 2;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LTTO");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "BRPDom10") == 0) {
+      Function = 2;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("10 Minute Basic Domination");
+      rgbBlink();
+      GearMod = 3;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRP");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "WarsDom10") == 0) {
+      Function = 2;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("10 Minute Basic Domination");
+      rgbBlink();
+      GearMod = 4;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LaserWars");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "OpsDom10") == 0) {
+      Function = 2;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("10 Minute Basic Domination");
+      rgbBlink();
+      GearMod = 5;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Ops Pro");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "BRXDom10") == 0) {
+      Function = 2;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("10 Minute Basic Domination");
+      rgbBlink();
+      GearMod = 0;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRX");
+      colorposession = 7;
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "LTTOShots") == 0) {
       Function = 3;
       ResetScores();
       EEPROM.write(1, Function);
@@ -1110,7 +2895,105 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       Serial.println("Shot Accumulator Mode");
       rgbBlink();
       colorposession = 7;
+      GearMod = 2;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LTTO");
       ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "BRPShots") == 0) {
+      Function = 3;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Shot Accumulator Mode");
+      rgbBlink();
+      colorposession = 7;
+      GearMod = 3;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRP");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "WarsShots") == 0) {
+      Function = 3;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Shot Accumulator Mode");
+      rgbBlink();
+      colorposession = 7;
+      GearMod = 4;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to LaserWars");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "OpsShots") == 0) {
+      Function = 3;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Shot Accumulator Mode");
+      rgbBlink();
+      colorposession = 7;
+      GearMod = 5;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Ops Pro");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "BRXShots") == 0) {
+      Function = 3;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Shot Accumulator Mode");
+      rgbBlink();
+      colorposession = 7;
+      GearMod = 0;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to BRX");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+    }
+    if (strcmp((char*)data, "EvolverShots") == 0) {
+      Function = 3;
+      ResetScores();
+      EEPROM.write(1, Function);
+      EEPROM.commit();
+      Serial.println("Shot Accumulator Mode");
+      rgbBlink();
+      colorposession = 7;
+      GearMod = 1;
+      EEPROM.write(2, GearMod);
+      EEPROM.commit();
+      Serial.println("Set Gear Selection to Evolver");
+      ShowGameMode();
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
     }
     if (strcmp((char*)data, "4a") == 0) {
       Function = 40;
@@ -1125,7 +3008,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBRED = true; colorposession = 0;
       rgbBlink();
-       
       ShowGameMode();
     }
     if (strcmp((char*)data, "4b") == 0) {
@@ -1141,8 +3023,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBBLUE = true; colorposession = 1;
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "4c") == 0) {
@@ -1158,8 +3038,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBYELLOW = true; colorposession = 2;
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "4d") == 0) {
@@ -1175,8 +3053,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBGREEN = true; colorposession = 3;   
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "4e") == 0) {
@@ -1191,8 +3067,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBWHITE = true; colorposession = 4;   
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "4f") == 0) {
@@ -1207,8 +3081,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBPURPLE = true; colorposession = 5;   
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "4g") == 0) {
@@ -1223,8 +3095,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBCYAN = true; colorposession = 6;   
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "4h") == 0) {
@@ -1239,8 +3109,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBYELLOW = true; colorposession = 2;   
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "5a") == 0) {
@@ -1258,8 +3126,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBRED = true; colorposession = 0;   
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "5b") == 0) {
@@ -1277,8 +3143,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBBLUE = true; colorposession = 1;   
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "5c") == 0) {
@@ -1296,8 +3160,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBYELLOW = true; colorposession = 2;   
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "5d") == 0) {
@@ -1315,8 +3177,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBGREEN = true; colorposession = 3;   
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "5e") == 0) {
@@ -1343,8 +3203,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Respawn Station Blue ");
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "7") == 0) {
@@ -1354,8 +3212,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Respawn Station Green ");
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "8") == 0) {
@@ -1365,8 +3221,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Respawn Station Yellow");
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "9") == 0) {
@@ -1376,8 +3230,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Capturable Respawn Station");
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "10") == 0) {
@@ -1387,8 +3239,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Own The Zone");
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "11") == 0) {
@@ -1398,8 +3248,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Gas Drone");
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "12") == 0) {
@@ -1409,8 +3257,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       EEPROM.commit();
       Serial.println("Gas Drone - 5 minutes");
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "13") == 0) {
@@ -1428,8 +3274,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBCYAN = true; colorposession = 6;   
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "14") == 0) {
@@ -1447,8 +3291,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB(); 
       RGBPURPLE = true; colorposession = 5;   
       rgbBlink();
-       
-      
       ShowGameMode();
     }
     if (strcmp((char*)data, "15") == 0) {
@@ -1474,46 +3316,8 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       resetRGB();
       RGBRED = true; colorposession = 0;
       rgbBlink();
-       
-      
       ShowGameMode();
-    }
-    if (strcmp((char*)data, "100") == 0) {
-      GearMod = 0;
-      ResetScores();
-      EEPROM.write(2, GearMod);
-      EEPROM.commit();
-      Serial.println("Set Gear Selection to BRX");
-      rgbBlink();
-      ShowGameMode();
-    }
-    if (strcmp((char*)data, "101") == 0) {
-      GearMod = 1;
-      ResetScores();
-      EEPROM.write(2, GearMod);
-      EEPROM.commit();
-      Serial.println("Set Gear Selection to Evolver");
-      rgbBlink();
-      ShowGameMode();
-    }
-    if (strcmp((char*)data, "102") == 0) {
-      GearMod = 2;
-      ResetScores();
-      EEPROM.write(2, GearMod);
-      EEPROM.commit();
-      Serial.println("Set Gear Selection to LTTO");
-      rgbBlink();
-      ShowGameMode();
-    }
-    if (strcmp((char*)data, "103") == 0) {
-      GearMod = 3;
-      ResetScores();
-      EEPROM.write(2, GearMod);
-      EEPROM.commit();
-      Serial.println("Set Gear Selection to Battle Rifle Pro");
-      rgbBlink();
-      ShowGameMode();
-    }    
+    } 
     if (strcmp((char*)data, "IRDebug") == 0) {
       Function = 99;
       ResetScores();
@@ -1522,24 +3326,6 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       Serial.println("IR Debug");
       resetRGB(); 
       RGBWHITE = true; colorposession = 4;   
-      rgbBlink();
-      ShowGameMode();
-    }
-    if (strcmp((char*)data, "104") == 0) {
-      GearMod = 4;
-      ResetScores();
-      EEPROM.write(2, GearMod);
-      EEPROM.commit();
-      Serial.println("Set Gear Selection to LaserWars");
-      rgbBlink();
-      ShowGameMode();
-    }
-    if (strcmp((char*)data, "105") == 0) {
-      GearMod = 5;
-      ResetScores();
-      EEPROM.write(2, GearMod);
-      EEPROM.commit();
-      Serial.println("Set Gear Selection to Ops Pro");
       rgbBlink();
       ShowGameMode();
     }
@@ -1703,11 +3489,259 @@ void handleWebSocketMessage(void *arg, uint8_t *data, size_t len) {
       rgbBlink();
       ESP.restart();
     }
+    if (strcmp((char*)data, "PSaverOn") == 0) {
+      Serial.println("Power Saver Mode On");
+      POWERSAVER = true;
+      BackgroundFunction = 1;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "PSaverOff") == 0) {
+      Serial.println("Power Saver Mode Off");
+      POWERSAVER = false;
+      BackgroundFunction = 0;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "EvolverArcade") == 0) {
+      Serial.println("Power Saver Mode Off, Evolver Arcade Enabled");
+      POWERSAVER = false;
+      BackgroundFunction = 2;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRXArcade") == 0) {
+      Serial.println("Power Saver Mode Off, BRX Arcade Enabled");
+      POWERSAVER = false;
+      BackgroundFunction = 3;
+      EEPROM.write(3, BackgroundFunction);
+      EEPROM.commit();
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPCapturetheFlag") == 0) {
+      Serial.println("BRPCapturetheFlag");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPFree4All") == 0) {
+      Serial.println("BRPFree4All");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPInfection") == 0) {
+      Serial.println("BRPInfection");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPDomination") == 0) {
+      Serial.println("BRPDomination");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPVIP") == 0) {
+      Serial.println("BRPVIP");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPTeamBattle") == 0) {
+      Serial.println("BRPTeamBattle");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPPlayercus2") == 0) {
+      Serial.println("BRPPlayercus2");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPPlayerCus1") == 0) {
+      Serial.println("BRPPlayerCus1");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPPlayerStandard") == 0) {
+      Serial.println("BRPPlayerStandard");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPPlayerVIP") == 0) {
+      Serial.println("BRPPlayerVIP");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPPlayerInfected") == 0) {
+      Serial.println("BRPPlayerInfected");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPPlayerRevive") == 0) {
+      Serial.println("BRPPlayerRevive");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPPlayerAmmo") == 0) {
+      Serial.println("BRPPlayerAmmo");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPPlayerMedic") == 0) {
+      Serial.println("BRPPlayerMedic");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2Shotgun") == 0) {
+      Serial.println("BRPWeap2Shotgun");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2Sniper") == 0) {
+      Serial.println("BRPWeap2Sniper");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2Sticky") == 0) {
+      Serial.println("BRPWeap2Sticky");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2Flash") == 0) {
+      Serial.println("BRPWeap2Flash");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2Gren") == 0) {
+      Serial.println("BRPWeap2Gren");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2C3") == 0) {
+      Serial.println("BRPWeap2C3");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2C2") == 0) {
+      Serial.println("BRPWeap2C2");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2C1") == 0) {
+      Serial.println("BRPWeap2C1");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2Infected") == 0) {
+      Serial.println("BRPWeap2Infected");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2LaserR") == 0) {
+      Serial.println("BRPWeap2LaserR");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2Charge") == 0) {
+      Serial.println("BRPWeap2Charge");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2ALaser") == 0) {
+      Serial.println("BRPWeap2ALaser");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2Cannon") == 0) {
+      Serial.println("BRPWeap2Cannon");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2Heavy") == 0) {
+      Serial.println("BRPWeap2Heavy");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2Burst") == 0) {
+      Serial.println("BRPWeap2Burst");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeap2BR") == 0) {
+      Serial.println("BRPWeap2BR");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapShotgun") == 0) {
+      Serial.println("BRPWeapShotgun");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapSniper") == 0) {
+      Serial.println("BRPWeapSniper");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapSticky") == 0) {
+      Serial.println("BRPWeapSticky");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapFlash") == 0) {
+      Serial.println("BRPWeapFlash");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapGren") == 0) {
+      Serial.println("BRPWeapGren");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapC3") == 0) {
+      Serial.println("BRPWeapC3");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapC2") == 0) {
+      Serial.println("BRPWeapC2");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapC1") == 0) {
+      Serial.println("BRPWeapC1");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapInfected") == 0) {
+      Serial.println("BRPWeapInfected");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapLaserR") == 0) {
+      Serial.println("BRPWeapLaserR");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapCharge") == 0) {
+      Serial.println("BRPWeapCharge");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapALaser") == 0) {
+      Serial.println("BRPWeapALaser");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapCannon") == 0) {
+      Serial.println("BRPWeapCannon");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapHeavy") == 0) {
+      Serial.println("BRPWeapHeavy");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapBurst") == 0) {
+      Serial.println("BRPWeapBurst");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPWeapBR") == 0) {
+      Serial.println("BRPWeapBR");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPTeamAll") == 0) {
+      Serial.println("BRPTeamAll");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPTeamPurple") == 0) {
+      Serial.println("BRPTeamPurple");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPTeamCyan") == 0) {
+      Serial.println("BRPTeamCyan");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPTeamGreen") == 0) {
+      Serial.println("BRPTeamGreen");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPTeamYellow") == 0) {
+      Serial.println("BRPTeamYellow");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPTeamBlue") == 0) {
+      Serial.println("BRPTeamBlue");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "BRPTeamRed") == 0) {
+      Serial.println("BRPTeamRed");
+      rgbBlink();
+    }
+    if (strcmp((char*)data, "toggleBRPStart") == 0) { // 
+      Serial.println("Starting BRP Players");
+      rgbBlink();
+    }
   }
 }
 
 void onEvent(AsyncWebSocket *server, AsyncWebSocketClient *client, AwsEventType type,
-             void *arg, uint8_t *data, size_t len) {
+  void *arg, uint8_t *data, size_t len) {
   switch (type) {
     case WS_EVT_CONNECT:
       Serial.printf("WebSocket client #%u connected from %s\n", client->id(), client->remoteIP().toString().c_str());
@@ -5309,6 +7343,10 @@ void setup(){
   } else {
     Serial.println("No Motion Sensor Function");
   }
+  BackgroundFunction = EEPROM.read(3);
+  if (BackgroundFunction == 1) {
+    POWERSAVER = true;
+  }
   // setting up eeprom based SSID:
   String esid;
   for (int i = 11; i < 43; ++i)
@@ -5614,6 +7652,11 @@ void loop() {
   if (Function == 99) {
     RunIRDebug();
   }
+  if (Serial.available() > 0) {
+    String str = Serial.readString();
+    broadcast(str);
+    Serial.println("received and broadcasted serial data");
+  }
 }
 
 void ClockSpeedCheck() {
@@ -5629,5 +7672,56 @@ void ClockSpeedCheck() {
     Serial.println("Core " + String(xPortGetCoreID()) + " Loop Counts: " + String(Core1));
     Serial.println("Core 1 Cycles per Second: " + String(SpeedRate1));
     Serial.println();
+    if (POWERSAVER) {
+      if (currentMillis1 > 300000 && RUNBACKGROUNDFUNCTION == false) {
+        RUNBACKGROUNDFUNCTION = true;
+        Serial.println("Disabling Modem");
+        WiFi.mode(WIFI_OFF);
+        //adc_power_off();
+        esp_wifi_stop();
+        //esp_bt_controller_disable();
+        btStop();
+      }
+    } else {
+      if (currentMillis1 > 60000 && RUNBACKGROUNDFUNCTION == false) {
+        if (BackgroundFunction > 1 && RUNBACKGROUNDFUNCTION == false) {
+          RUNBACKGROUNDFUNCTION = true;
+          server.end();
+          //WiFi.end();
+          Serial.println("Enabling ESPNOW LR");
+          WiFi.mode(WIFI_STA);
+          // SET THE RIGHT WIRELESS PROTOCOL
+          esp_wifi_set_protocol(WIFI_IF_AP,WIFI_PROTOCOL_LR);
+          esp_wifi_set_protocol(WIFI_IF_STA,WIFI_PROTOCOL_LR);
+          //esp_wifi_set_protocol(WIFI_IF_AP, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+          //esp_wifi_set_protocol(WIFI_IF_STA, WIFI_PROTOCOL_11B | WIFI_PROTOCOL_11G | WIFI_PROTOCOL_11N);
+          // Start ESP Now
+          Serial.print("ESP Board MAC Address:  ");
+          Serial.println(WiFi.macAddress());
+          Serial.println("Starting ESPNOW");
+          IntializeESPNOW();
+        }
+      }
+      /*
+      if (RUNBACKGROUNDFUNCTION) {
+        if (BackgroundFunction == 2) {
+          // check game play time for players in game
+          byte k = 0;
+          while (k < 16) {
+            if (PlayerInGame[k]) {
+              if (currentMillis1 - PlayerStartTime[k] > 60000) {
+                // player k has been playing for 10 minutes
+                // end player k's game
+                PlayerToEnd = k;
+                EndArcadeGame();
+                PlayerInGame[k] = false;
+              }
+            }
+            k++;
+          }
+        }
+      }
+      */
+    }
   }
 }
